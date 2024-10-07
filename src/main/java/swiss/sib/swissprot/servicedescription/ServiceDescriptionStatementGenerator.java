@@ -38,6 +38,12 @@ public class ServiceDescriptionStatementGenerator {
 		statement(endpoint, SD.SUPPORTED_LANGUAGE, SD.SPARQL_11_QUERY);
 		statement(endpoint, SD.FEATURE_PROPERTY, SD.UNION_DEFAULT_GRAPH);
 		statement(endpoint, SD.FEATURE_PROPERTY, SD.BASIC_FEDERATED_QUERY);
+		for (GraphDescription gd : item.getGraphs()) {
+			final String rawGraphName = gd.getGraphName();
+			IRI graphName = getIRI(rawGraphName);
+			IRI namedGraph = graphName;
+			statement(endpoint, SD.AVAILBLE_GRAPHS, namedGraph);
+		}
 		LocalDate calendar = describeDefaultDataset(item, defaultDatasetId, defaultGraphId);
 		
 		for (GraphDescription gd : item.getGraphs()) {
@@ -111,6 +117,7 @@ public class ServiceDescriptionStatementGenerator {
 
 		IRI namedGraph = graphName;
 		statement(defaultDatasetId, SD.NAMED_GRAPH_PROPERTY, namedGraph);
+		statement(namedGraph, RDF.TYPE, SD.NAMED_GRAPH_CLASS);
 		IRI graph = vf.createIRI(voidLocation, "#_graph_" + graphName.getLocalName());
 		statement(namedGraph, SD.NAME, graphName);
 		statement(namedGraph, SD.GRAPH_PROPERTY, graph);
