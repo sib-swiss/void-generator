@@ -12,6 +12,7 @@ import java.util.concurrent.locks.Lock;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
+import org.eclipse.rdf4j.model.IRI;
 import org.eclipse.rdf4j.query.MalformedQueryException;
 import org.eclipse.rdf4j.query.QueryEvaluationException;
 import org.eclipse.rdf4j.repository.Repository;
@@ -28,15 +29,15 @@ public abstract class CountDistinctIriInAGraphVirtuoso extends QueryCallable<Lon
 
 	protected final ServiceDescription sd;
 	protected final Consumer<ServiceDescription> saver;
-	protected final String graphIri;
+	protected final IRI graphIri;
 	private final Lock writeLock;
 	private final Consumer<Long> allSetter;
 	private final BiConsumer<GraphDescription, Long> graphSetter;
-	private final Map<String, Roaring64NavigableMap> graphIriIds;
+	private final Map<IRI, Roaring64NavigableMap> graphIriIds;
 
 	public CountDistinctIriInAGraphVirtuoso(Repository repository, ServiceDescription sd,
-			Consumer<ServiceDescription> saver, String graphIri, Lock writeLock, Consumer<Long> allSetter,
-			BiConsumer<GraphDescription, Long> graphSetter, Map<String, Roaring64NavigableMap> graphIriIds2,
+			Consumer<ServiceDescription> saver, IRI graphIri, Lock writeLock, Consumer<Long> allSetter,
+			BiConsumer<GraphDescription, Long> graphSetter, Map<IRI, Roaring64NavigableMap> graphIriIds2,
 			Semaphore limiter, AtomicInteger finishedQueries) {
 		super(repository, limiter, finishedQueries);
 		this.sd = sd;

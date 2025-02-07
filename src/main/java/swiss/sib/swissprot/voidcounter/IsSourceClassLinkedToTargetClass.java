@@ -12,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import swiss.sib.swissprot.servicedescription.ClassPartition;
+import swiss.sib.swissprot.servicedescription.Generate;
 import swiss.sib.swissprot.servicedescription.GraphDescription;
 import swiss.sib.swissprot.servicedescription.PredicatePartition;
 import swiss.sib.swissprot.servicedescription.sparql.Helper;
@@ -27,6 +28,16 @@ public final class IsSourceClassLinkedToTargetClass extends QueryCallable<Long> 
 						?predicate ?target . 
 					?target a ?targetType .
 				}
+			}
+			""";
+	
+	private static final String COUNT_LINKS_IN_DEFAULT_GRAPH = """
+			SELECT 
+				(COUNT (?subject) AS ?subjects) 
+			WHERE { 
+				?subject a ?sourceType ; 
+					?predicate ?target . 
+				?target a ?targetType .
 			}
 			""";
 
@@ -69,13 +80,23 @@ public final class IsSourceClassLinkedToTargetClass extends QueryCallable<Long> 
 	protected Long run(RepositoryConnection connection) throws Exception {
 		final IRI sourceType = source.getClazz();
 		final IRI targetType = target.getClazz();
-		TupleQuery tq = connection.prepareTupleQuery(COUNT_LINKS_IN_SAME_GRAPH);
+		TupleQuery tq = connection.prepareTupleQuery(COUNT_LINKS_IN_DEFAULT_GRAPH);
+		setBindings(sourceType, targetType, tq);
+		if (Generate.isOnlyDefaultGraph(gd.getGraph())) {
+			tq = connection.prepareTupleQuery(COUNT_LINKS_IN_SAME_GRAPH);
+			setBindings(sourceType, targetType, tq);
+			tq.setBinding("graph", gd.getGraph());
+			setQuery(COUNT_LINKS_IN_SAME_GRAPH, tq.getBindings());
+		} else {
+			setQuery(COUNT_LINKS_IN_DEFAULT_GRAPH, tq.getBindings());
+		}
+		return Helper.getSingleLongFromSparql(tq, connection, SUBJECTS);
+	}
+
+	public void setBindings(final IRI sourceType, final IRI targetType, TupleQuery tq) {
 		tq.setBinding("sourceType", sourceType);
 		tq.setBinding("targetType", targetType);
-		tq.setBinding("graph", gd.getGraph());
 		tq.setBinding("predicate", predicate);
-		setQuery(COUNT_LINKS_IN_SAME_GRAPH, tq.getBindings());
-		return Helper.getSingleLongFromSparql(tq, connection, SUBJECTS);
 	}
 
 	@Override

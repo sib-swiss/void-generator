@@ -4,6 +4,7 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -15,6 +16,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
+import org.eclipse.rdf4j.model.IRI;
 import org.eclipse.rdf4j.query.MalformedQueryException;
 import org.eclipse.rdf4j.query.QueryEvaluationException;
 import org.eclipse.rdf4j.repository.Repository;
@@ -24,6 +26,8 @@ import org.roaringbitmap.longlong.Roaring64NavigableMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import swiss.sib.swissprot.servicedescription.FindGraphs;
+import swiss.sib.swissprot.servicedescription.Generate;
 import swiss.sib.swissprot.servicedescription.GraphDescription;
 import swiss.sib.swissprot.servicedescription.ServiceDescription;
 import swiss.sib.swissprot.voidcounter.QueryCallable;
@@ -47,17 +51,17 @@ public final class CountDistinctIriSubjectsAndObjectsInAGraphVirtuoso extends
 	private static final Logger log = LoggerFactory.getLogger(CountDistinctIriSubjectsAndObjectsInAGraphVirtuoso.class);
 	protected final ServiceDescription sd;
 	protected final Consumer<ServiceDescription> saver;
-	protected final String graphIri;
+	protected final IRI graphIri;
 	private final Lock writeLock;
 	private final Consumer<Long> objectAllSetter;
 	private final Consumer<Long> subjectAllSetter;
-	private final Map<String, Roaring64NavigableMap> objectGraphIriIds;
-	private final Map<String, Roaring64NavigableMap> subjectGraphIriIds;
+	private final Map<IRI, Roaring64NavigableMap> objectGraphIriIds;
+	private final Map<IRI, Roaring64NavigableMap> subjectGraphIriIds;
 	private final AtomicInteger running = new AtomicInteger(0);
 
 	public CountDistinctIriSubjectsAndObjectsInAGraphVirtuoso(ServiceDescription sd, Repository repository,
-			Consumer<ServiceDescription> saver, Lock writeLock, Map<String, Roaring64NavigableMap> graphSubjectIriIds,
-			Map<String, Roaring64NavigableMap> graphObjectIriIds, String graphIri, Semaphore limit, AtomicInteger finishedQueries) {
+			Consumer<ServiceDescription> saver, Lock writeLock, Map<IRI, Roaring64NavigableMap> graphSubjectIriIds,
+			Map<IRI, Roaring64NavigableMap> graphObjectIriIds, IRI graphIri, Semaphore limit, AtomicInteger finishedQueries) {
 		super(repository, limit, finishedQueries);
 		this.subjectGraphIriIds = graphSubjectIriIds;
 		this.objectGraphIriIds = graphObjectIriIds;
@@ -84,8 +88,10 @@ public final class CountDistinctIriSubjectsAndObjectsInAGraphVirtuoso extends
 		log.debug("Counted distinct iri objects and subjects for graph " + graphIri);
 	}
 
-	protected String queryForGraph() {
-		return """
+	protected String queryForGraph(IRI graphIRI) {
+		StringBuilder query = new StringBuilder();
+		
+		query.append("""
 				select
 				case
 				when is_named_iri_id(RDF_QUAD.S) then iri_id_num(RDF_QUAD.S)
@@ -97,9 +103,23 @@ public final class CountDistinctIriSubjectsAndObjectsInAGraphVirtuoso extends
 				end as oid
 				from
 				RDF_QUAD
-				where
-				RDF_QUAD.G = iri_to_id('""" + graphIri + "')";
+				""");
+		if (! Generate.isOnlyDefaultGraph(graphIRI)) {
+				query.append("where	RDF_QUAD.G = iri_to_id('").append(graphIri.toString()).append("')");
+		} else {
+			query.append("where	");
+			for (Iterator<IRI> iterator = FindGraphs.VIRTUOSO_GRAPHS.iterator(); iterator.hasNext();) {
+				IRI g = iterator.next();
+				query.append("RDF_QUAD.G <> iri_to_id('").append(g.toString()).append("')");
+				if (iterator.hasNext()) {
+					query.append(" and ");
+				}
+			}
+		}
+		return query.toString();
 	}
+
+	
 
 	protected SubObj findUniqueIriIds(final Connection quadStoreConnection) {
 		Roaring64NavigableMap subjects = new Roaring64NavigableMap();
@@ -145,7 +165,7 @@ public final class CountDistinctIriSubjectsAndObjectsInAGraphVirtuoso extends
 	protected void extractUniqueIRIIdsPerGraph(final Statement createStatement, Roaring64NavigableMap subjects,
 			Roaring64NavigableMap objects) throws SQLException {
 
-		setQuery(queryForGraph());
+		setQuery(queryForGraph(graphIri));
 		final ReentrantLock subLock = new ReentrantLock();
 		final ReentrantLock objLock = new ReentrantLock();
 		AddedStatus subjectIdx = new AddedStatus(0, 0, new Roaring64NavigableMap(), subLock);
@@ -304,7 +324,7 @@ public final class CountDistinctIriSubjectsAndObjectsInAGraphVirtuoso extends
 		}
 	}
 
-	private long countAll(Map<String, Roaring64NavigableMap> objectGraphIriIds2) {
+	private long countAll(Map<IRI, Roaring64NavigableMap> objectGraphIriIds2) {
 		Roaring64NavigableMap all = new Roaring64NavigableMap();
 		for (Roaring64NavigableMap rbm : objectGraphIriIds2.values()) {
 			all.or(rbm);

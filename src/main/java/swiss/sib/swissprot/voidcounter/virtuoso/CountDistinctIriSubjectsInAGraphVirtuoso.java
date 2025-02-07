@@ -6,6 +6,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 import java.util.function.Consumer;
 
+import org.eclipse.rdf4j.model.IRI;
 import org.eclipse.rdf4j.repository.Repository;
 import org.roaringbitmap.longlong.Roaring64NavigableMap;
 import org.slf4j.Logger;
@@ -22,8 +23,8 @@ public final class CountDistinctIriSubjectsInAGraphVirtuoso extends CountDistinc
 	
 
 	public CountDistinctIriSubjectsInAGraphVirtuoso(ServiceDescription sd, Repository repository,
-			Consumer<ServiceDescription> saver, Lock writeLock, Map<String, Roaring64NavigableMap> graphIriIds,
-			String graphIri, Semaphore limit, AtomicInteger finishedQueries) {
+			Consumer<ServiceDescription> saver, Lock writeLock, Map<IRI, Roaring64NavigableMap> graphIriIds,
+			IRI graphIri, Semaphore limit, AtomicInteger finishedQueries) {
 		super(repository, sd, saver, graphIri, writeLock, sd::setDistinctIriSubjectCount, GraphDescription::setDistinctIriSubjectCount,
 				 graphIriIds,
 				  limit, finishedQueries);

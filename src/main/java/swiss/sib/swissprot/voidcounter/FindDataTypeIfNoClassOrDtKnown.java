@@ -26,6 +26,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import swiss.sib.swissprot.servicedescription.ClassPartition;
+import swiss.sib.swissprot.servicedescription.FindGraphs;
+import swiss.sib.swissprot.servicedescription.Generate;
 import swiss.sib.swissprot.servicedescription.GraphDescription;
 import swiss.sib.swissprot.servicedescription.PredicatePartition;
 import virtuoso.rdf4j.driver.VirtuosoRepositoryConnection;
@@ -47,6 +49,16 @@ public final class FindDataTypeIfNoClassOrDtKnown extends QueryCallable<Set<IRI>
 					FILTER(isLiteral(?target)) .
 					BIND(datatype(?target) as ?dt)
 				}
+			}
+			""";
+
+	private static final String DATA_TYPE_QUERY_DEFAULT_GRAPH = """
+			SELECT DISTINCT ?dt
+			WHERE {
+				?subject a ?sourceType .
+				?subject ?predicate ?target .
+				FILTER(isLiteral(?target)) .
+				BIND(datatype(?target) as ?dt)
 			}
 			""";
 	private final PredicatePartition predicatePartition;
@@ -89,12 +101,7 @@ public final class FindDataTypeIfNoClassOrDtKnown extends QueryCallable<Set<IRI>
 			RepositoryConnection connection) {
 		// See http://docs.openlinksw.com/virtuoso/rdfiriidtype/
 		final Connection quadStoreConnection = ((VirtuosoRepositoryConnection) connection).getQuadStoreConnection();
-		query = "SELECT DISTINCT t.dt FROM (SELECT TOP 100000 RDF_DATATYPE_OF_OBJ(PO.O) dt "
-				+ "FROM RDF_QUAD PO, RDF_QUAD ST WHERE  ST.S=PO.S AND "
-				+ " ST.P=iri_to_id('http://www.w3.org/1999/02/22-rdf-syntax-ns#type') AND ST.O=iri_to_id('" + sourceType
-				+ "') AND " + " PO.P=iri_to_id('" + predicate + "') AND " + " isiri_id(PO.O) = 0 AND "
-				+ " PO.G=iri_to_id('" + gd.getGraphName() + "') AND " + " ST.G=iri_to_id('" + gd.getGraphName()
-				+ "'))t";
+		query = getVirtuosoOptimizedQuery(sourceType, predicate);
 		try (final Statement createStatement = quadStoreConnection.createStatement()) {
 
 			try (ResultSet rs = createStatement.executeQuery(query)) {
@@ -108,15 +115,39 @@ public final class FindDataTypeIfNoClassOrDtKnown extends QueryCallable<Set<IRI>
 		}
 	}
 
+	public String getVirtuosoOptimizedQuery(final Resource sourceType, Resource predicate) {
+		StringBuilder p = new StringBuilder("""
+				SELECT DISTINCT t.dt FROM (SELECT TOP 100000 RDF_DATATYPE_OF_OBJ(PO.O) dt
+				FROM RDF_QUAD PO, RDF_QUAD ST WHERE  ST.S=PO.S AND
+				ST.P=iri_to_id('http://www.w3.org/1999/02/22-rdf-syntax-ns#type') """);
+		p.append("AND ST.O=iri_to_id('").append(sourceType).append("') AND PO.P=iri_to_id('").append(predicate);
+		p.append(" isiri_id(PO.O) = 0 AND ");
+		if (Generate.isOnlyDefaultGraph(gd.getGraph())) {
+			for (IRI vg: FindGraphs.VIRTUOSO_GRAPHS) {
+				p.append(" PO.G <> iri_to_id('").append(vg.toString()).append("') AND ");	
+			}
+		} else {
+			p.append(" PO.G=iri_to_id('" + gd.getGraphName() + "') AND ");
+		}
+		p.append(" ST.G=iri_to_id('" + gd.getGraphName() + "'))t");
+		return p.toString();
+	}
+
 	private void pureSparql(Resource predicate, PredicatePartition predicatePartition, final Resource sourceType,
 			RepositoryConnection localConnection, Set<IRI> datatypes) {
 
-
-		TupleQuery tq = localConnection.prepareTupleQuery(DATA_TYPE_QUERY);
-		tq.setBinding("graphName", gd.getGraph());
+		String q = DATA_TYPE_QUERY_DEFAULT_GRAPH;
+		TupleQuery tq;
+		if (!Generate.isOnlyDefaultGraph(gd.getGraph())) {
+			q = DATA_TYPE_QUERY;
+			tq = localConnection.prepareTupleQuery(q);
+			tq.setBinding("graphName", gd.getGraph());
+		} else {
+			tq = localConnection.prepareTupleQuery(q);
+		}
 		tq.setBinding("sourceType", sourceType);
 		tq.setBinding("predicate", predicate);
-		setQuery(DATA_TYPE_QUERY, tq.getBindings());
+		setQuery(q, tq.getBindings());
 		try (TupleQueryResult eval = tq.evaluate()) {
 			while (eval.hasNext()) {
 				final BindingSet next = eval.next();
@@ -156,7 +187,7 @@ public final class FindDataTypeIfNoClassOrDtKnown extends QueryCallable<Set<IRI>
 			writeLock.unlock();
 		}
 	}
-	
+
 	@Override
 	protected Logger getLog() {
 		return log;

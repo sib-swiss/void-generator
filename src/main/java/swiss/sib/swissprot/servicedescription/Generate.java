@@ -43,6 +43,7 @@ import org.eclipse.rdf4j.model.IRI;
 import org.eclipse.rdf4j.model.Statement;
 import org.eclipse.rdf4j.model.ValueFactory;
 import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
+import org.eclipse.rdf4j.model.vocabulary.RDF4J;
 import org.eclipse.rdf4j.query.MalformedQueryException;
 import org.eclipse.rdf4j.query.QueryLanguage;
 import org.eclipse.rdf4j.query.Update;
@@ -86,7 +87,7 @@ public class Generate implements Callable<Integer> {
 
 	protected static final Logger log = LoggerFactory.getLogger(Generate.class);
 
-	private Set<String> graphNames = Set.of();
+	private Set<IRI> graphNames = Set.of();
 	private Repository repository;
 
 	private final ReadWriteLock rwLock = new ReentrantReadWriteLock();
@@ -161,6 +162,8 @@ public class Generate implements Callable<Integer> {
 	@Option(names = { "--data-release-date" }, description = "Set a 'date' of release for the sparql-endpoint data and the datasets")
 	private String dataReleaseDate;
 
+	@Option(names = { "--only-default-graph" }, description = "Only count the default graph")
+	private boolean onlyDefaultGraph = false;
 	
 	public static void main(String[] args) {
 		int exitCode = new CommandLine(new Generate()).execute(args);
@@ -177,11 +180,11 @@ public class Generate implements Callable<Integer> {
 	@Override
 	public Integer call() throws Exception {
 		if (commaSeperatedGraphs != null)
-			this.graphNames = COMMA.splitAsStream(commaSeperatedGraphs).collect(Collectors.toSet());
+			this.graphNames = COMMA.splitAsStream(commaSeperatedGraphs).map(SimpleValueFactory.getInstance()::createIRI).collect(Collectors.toSet());
 		else
 			this.graphNames = new HashSet<>();
 
-		log.debug("Void listener for " + graphNames.stream().collect(Collectors.joining(", ")));
+		log.debug("Void listener for " + graphNames.stream().map(IRI::stringValue).collect(Collectors.joining(", ")));
 		if (commaSeperatedKnownPredicates != null) {
 			this.knownPredicates = COMMA.splitAsStream(commaSeperatedKnownPredicates).map(s -> VF.createIRI(s))
 					.collect(Collectors.toSet());
@@ -220,6 +223,10 @@ public class Generate implements Callable<Integer> {
 		return 0;
 	}
 
+	public static boolean isOnlyDefaultGraph(IRI graphIRI2) {
+		return RDF4J.NIL.equals(graphIRI2);
+	}
+	
 	public Generate() {
 		super();
 		this.sd = new ServiceDescription();
@@ -248,7 +255,7 @@ public class Generate implements Callable<Integer> {
 	}
 
 	public void update() {
-		log.debug("Void listener for " + graphNames.stream().collect(Collectors.joining(", ")));
+		log.debug("Void listener for " + graphNames.stream().map(IRI::stringValue).collect(Collectors.joining(", ")));
 		if (dataReleaseDate != null) {
 			sd.setReleaseDate(LocalDate.from(DateTimeFormatter.ISO_DATE.parse(dataReleaseDate)));
 		}
@@ -263,9 +270,9 @@ public class Generate implements Callable<Integer> {
 		this.distinctObjectIrisFile = new File(sdFile.getParentFile(), sdFile.getName() + "object-bitsets-per-graph");
 		
 
-		ConcurrentHashMap<String, Roaring64NavigableMap> distinctSubjectIris = readGraphsWithSerializedBitMaps(
+		ConcurrentHashMap<IRI, Roaring64NavigableMap> distinctSubjectIris = readGraphsWithSerializedBitMaps(
 				this.distinctSubjectIrisFile);
-		ConcurrentHashMap<String, Roaring64NavigableMap> distinctObjectIris = readGraphsWithSerializedBitMaps(
+		ConcurrentHashMap<IRI, Roaring64NavigableMap> distinctObjectIris = readGraphsWithSerializedBitMaps(
 				this.distinctObjectIrisFile);
 		Consumer<ServiceDescription> saver = (sdg) -> writeServiceDescriptionAndGraphs(distinctSubjectIris,
 				distinctObjectIris, sdg, iriOfVoid);
@@ -290,13 +297,13 @@ public class Generate implements Callable<Integer> {
 		executors.shutdown();
 	}
 
-	private ConcurrentHashMap<String, Roaring64NavigableMap> readGraphsWithSerializedBitMaps(File file) {
-		ConcurrentHashMap<String, Roaring64NavigableMap> map = new ConcurrentHashMap<>();
+	private ConcurrentHashMap<IRI, Roaring64NavigableMap> readGraphsWithSerializedBitMaps(File file) {
+		ConcurrentHashMap<IRI, Roaring64NavigableMap> map = new ConcurrentHashMap<>();
 		if (file.exists() && !forcedRefresh) {
 			try (FileInputStream fis = new FileInputStream(file); ObjectInputStream bis = new ObjectInputStream(fis)) {
 				int numberOfGraphs = bis.readInt();
 				for (int i = 0; i < numberOfGraphs; i++) {
-					String graph = bis.readUTF();
+					IRI graph = SimpleValueFactory.getInstance().createIRI(bis.readUTF());
 					Roaring64NavigableMap rb = new Roaring64NavigableMap();
 					rb.readExternal(bis);
 					map.put(graph, rb);
@@ -310,8 +317,8 @@ public class Generate implements Callable<Integer> {
 		return map;
 	}
 
-	private void writeServiceDescriptionAndGraphs(ConcurrentHashMap<String, Roaring64NavigableMap> distinctSubjectIris,
-			ConcurrentHashMap<String, Roaring64NavigableMap> distinctObjectIris, ServiceDescription sdg,
+	private void writeServiceDescriptionAndGraphs(ConcurrentHashMap<IRI, Roaring64NavigableMap> distinctSubjectIris,
+			ConcurrentHashMap<IRI, Roaring64NavigableMap> distinctObjectIris, ServiceDescription sdg,
 			IRI iriOfVoid) {
 		final Lock readLock = rwLock.readLock();
 		try {
@@ -333,7 +340,7 @@ public class Generate implements Callable<Integer> {
 	}
 
 	private void writeGraphsWithSerializedBitMaps(File targetFile,
-			ConcurrentHashMap<String, Roaring64NavigableMap> map) {
+			ConcurrentHashMap<IRI, Roaring64NavigableMap> map) {
 		if (!targetFile.exists()) {
 			try {
 				targetFile.createNewFile();
@@ -345,8 +352,8 @@ public class Generate implements Callable<Integer> {
 				BufferedOutputStream bos = new BufferedOutputStream(fos);
 				ObjectOutputStream dos = new ObjectOutputStream(bos)) {
 			dos.writeInt(map.size());
-			for (Map.Entry<String, Roaring64NavigableMap> en : map.entrySet()) {
-				dos.writeUTF(en.getKey());
+			for (Map.Entry<IRI, Roaring64NavigableMap> en : map.entrySet()) {
+				dos.writeUTF(en.getKey().stringValue());
 				Roaring64NavigableMap value = en.getValue();
 				value.runOptimize();
 				value.writeExternal(dos);
@@ -371,18 +378,17 @@ public class Generate implements Callable<Integer> {
 	}
 
 	private void countTheVoidDataItself(IRI voidGraph, Consumer<ServiceDescription> saver,
-			ConcurrentHashMap<String, Roaring64NavigableMap> distinctSubjectIris,
-			ConcurrentHashMap<String, Roaring64NavigableMap> distinctObjectIris, boolean isVirtuoso, Semaphore limit) {
-		String voidGraphUri = voidGraph.toString();
-		if (!graphNames.contains(voidGraphUri)) {
-			scheduleBigCountsPerGraph(sd, voidGraphUri, saver, limit);
+			ConcurrentHashMap<IRI, Roaring64NavigableMap> distinctSubjectIris,
+			ConcurrentHashMap<IRI, Roaring64NavigableMap> distinctObjectIris, boolean isVirtuoso, Semaphore limit) {
+		if (!graphNames.contains(voidGraph)) {
+			scheduleBigCountsPerGraph(sd, voidGraph, saver, limit);
 			Lock writeLock = rwLock.writeLock();
-			if (isVirtuoso) {
+			if (isVirtuoso && ! onlyDefaultGraph) {
 				CountDistinctIriSubjectsAndObjectsInAGraphVirtuoso cdso = new CountDistinctIriSubjectsAndObjectsInAGraphVirtuoso(
-						sd, repository, saver, writeLock, distinctSubjectIris, distinctObjectIris, voidGraphUri, limit, finishedQueries);
+						sd, repository, saver, writeLock, distinctSubjectIris, distinctObjectIris, voidGraph, limit, finishedQueries);
 				schedule(cdso);
 			}
-			countSpecificThingsPerGraph(sd, knownPredicates, voidGraphUri, limit, saver);
+			countSpecificThingsPerGraph(sd, knownPredicates, voidGraph, limit, saver);
 		}
 	}
 
@@ -437,11 +443,13 @@ public class Generate implements Callable<Integer> {
 	}
 
 	private void scheduleCounters(ServiceDescription sd, Consumer<ServiceDescription> saver,
-			ConcurrentHashMap<String, Roaring64NavigableMap> distinctSubjectIris,
-			ConcurrentHashMap<String, Roaring64NavigableMap> distinctObjectIris) {
+			ConcurrentHashMap<IRI, Roaring64NavigableMap> distinctSubjectIris,
+			ConcurrentHashMap<IRI, Roaring64NavigableMap> distinctObjectIris) {
 		Lock writeLock = rwLock.writeLock();
 		boolean isvirtuoso = repository instanceof VirtuosoRepository;
-		if (graphNames.isEmpty()) {
+		if (onlyDefaultGraph) {
+			graphNames = Collections.singleton(RDF4J.NIL);
+		} else if (graphNames.isEmpty()) {
 			try (RepositoryConnection connection = repository.getConnection()) {
 				graphNames = FindGraphs.findAllNonVirtuosoGraphs(connection, scheduledQueries, finishedQueries);
 			}
@@ -453,7 +461,12 @@ public class Generate implements Callable<Integer> {
 		}
 
 		if (countDistinctObjects && countDistinctSubjects && isvirtuoso) {
-			for (String graphName : graphNames) {
+			if (onlyDefaultGraph)
+			{
+				schedule(new CountDistinctIriSubjectsAndObjectsInAGraphVirtuoso(sd, repository, saver, writeLock,
+						distinctSubjectIris, distinctObjectIris, RDF4J.NIL, limit, finishedQueries));
+			}
+			for (IRI graphName : graphNames) {
 				schedule(new CountDistinctIriSubjectsAndObjectsInAGraphVirtuoso(sd, repository, saver, writeLock,
 						distinctSubjectIris, distinctObjectIris, graphName, limit, finishedQueries));
 			}
@@ -468,50 +481,61 @@ public class Generate implements Callable<Integer> {
 						limit);
 			}
 		}
-		for (String graphName : graphNames) {
+		for (IRI graphName : graphNames) {
 			scheduleBigCountsPerGraph(sd, graphName, saver, limit);
 		}
 
 		// Ensure that we first do the big counts before starting on counting the
 		// smaller sets.
-		for (String graphName : graphNames) {
-			countSpecificThingsPerGraph(sd, knownPredicates, graphName, limit, saver);
+		if (!onlyDefaultGraph) {
+			for (IRI graphName : graphNames) {
+				countSpecificThingsPerGraph(sd, knownPredicates, graphName, limit, saver);
+			}
+		} else {
+			countSpecificThingsPerGraph(sd, knownPredicates, RDF4J.NIL, limit, saver);
 		}
 	}
 
 	private void countDistinctObjects(ServiceDescription sd,
-			Consumer<ServiceDescription> saver, ConcurrentHashMap<String, Roaring64NavigableMap> distinctObjectIris,
-			Lock writeLock, boolean isvirtuoso, Collection<String> allGraphs, Semaphore limit) {
+			Consumer<ServiceDescription> saver, ConcurrentHashMap<IRI, Roaring64NavigableMap> distinctObjectIris,
+			Lock writeLock, boolean isvirtuoso, Collection<IRI> allGraphs, Semaphore limit) {
 		schedule(new CountDistinctBnodeObjectsForAllGraphs(sd, repository, saver, writeLock, limit,
 				finishedQueries));
-		if (!isvirtuoso) {
-			schedule(new CountDistinctIriObjectsForAllGraphsAtOnce(sd, repository, saver, writeLock,
-					limit, finishedQueries));
-		} else if (!countDistinctSubjects) {
-			schedule(new CountDistinctIriObjectsForAllGraphsAtOnce(sd, repository, saver, writeLock, limit,
-					 finishedQueries));
+		if (!onlyDefaultGraph) {
+			if (!isvirtuoso) {
+				schedule(new CountDistinctIriObjectsForAllGraphsAtOnce(sd, repository, saver, writeLock,
+						limit, finishedQueries));
+			} else if (!countDistinctSubjects) {
+				schedule(new CountDistinctIriObjectsForAllGraphsAtOnce(sd, repository, saver, writeLock, limit,
+						 finishedQueries));
+			}
 		}
 		schedule(new CountDistinctLiteralObjectsForAllGraphs(sd, repository, saver, writeLock, limit, 
 				finishedQueries));
 	}
 
 	private void countDistinctSubjects(ServiceDescription sd,
-			Consumer<ServiceDescription> saver, ConcurrentHashMap<String, Roaring64NavigableMap> distinctSubjectIris,
-			Lock writeLock, boolean isvirtuoso, Collection<String> allGraphs, Semaphore limit) {
-		if (!isvirtuoso) {
+			Consumer<ServiceDescription> saver, ConcurrentHashMap<IRI, Roaring64NavigableMap> distinctSubjectIris,
+			Lock writeLock, boolean isvirtuoso, Collection<IRI> allGraphs, Semaphore limit) {
+		if (onlyDefaultGraph) {
 			schedule(new CountDistinctIriSubjectsForAllGraphs(sd, repository, saver, writeLock, limit,
 					finishedQueries));
-		} else if (!countDistinctObjects) {
-			for (String graphName : allGraphs) {
-				schedule(new CountDistinctIriSubjectsInAGraphVirtuoso(sd, repository, saver, writeLock,
-						distinctSubjectIris, graphName, limit, finishedQueries));
+		} else {
+			if (!isvirtuoso) {
+				schedule(new CountDistinctIriSubjectsForAllGraphs(sd, repository, saver, writeLock, limit,
+						finishedQueries));
+			} else if (!countDistinctObjects) {
+				for (IRI graphName : allGraphs) {
+					schedule(new CountDistinctIriSubjectsInAGraphVirtuoso(sd, repository, saver, writeLock,
+							distinctSubjectIris, graphName, limit, finishedQueries));
+				}
 			}
 		}
 		schedule(new CountDistinctBnodeSubjects(sd, repository, writeLock, limit, finishedQueries, saver));
 	}
 
 	private void countSpecificThingsPerGraph(ServiceDescription sd, Set<IRI> knownPredicates,
-			String graphName, Semaphore limit, Consumer<ServiceDescription> saver) {
+			IRI graphName, Semaphore limit, Consumer<ServiceDescription> saver) {
 		final GraphDescription gd = getOrCreateGraphDescriptionObject(graphName, sd);
 		if (findDistinctClasses && findPredicates && detailedCount) {
 			schedule(new FindPredicatesAndClasses(gd, repository, this::schedule, knownPredicates, rwLock, limit,
@@ -529,7 +553,7 @@ public class Generate implements Callable<Integer> {
 		}
 	}
 
-	private void scheduleBigCountsPerGraph(ServiceDescription sd, String graphName,
+	private void scheduleBigCountsPerGraph(ServiceDescription sd, IRI graphName,
 			Consumer<ServiceDescription> saver, Semaphore limit) {
 		final GraphDescription gd = getOrCreateGraphDescriptionObject(graphName, sd);
 		Lock writeLock = rwLock.writeLock();
@@ -545,11 +569,11 @@ public class Generate implements Callable<Integer> {
 		schedule(new TripleCount(gd, repository, writeLock, limit, finishedQueries, saver, sd));
 	}
 
-	protected GraphDescription getOrCreateGraphDescriptionObject(String graphName, ServiceDescription sd) {
-		GraphDescription pgd = sd.getGraph(graphName);
+	protected GraphDescription getOrCreateGraphDescriptionObject(IRI graphName, ServiceDescription sd) {
+		GraphDescription pgd = sd.getGraph(graphName.stringValue());
 		if (pgd == null) {
 			pgd = new GraphDescription();
-			pgd.setGraphName(graphName);
+			pgd.setGraph(graphName);
 			Lock writeLock = rwLock.writeLock();
 			try {
 				writeLock.lock();
@@ -626,7 +650,7 @@ public class Generate implements Callable<Integer> {
 		this.repository = repository;
 	}
 
-	public void setGraphNames(Set<String> graphNames) {
+	public void setGraphNames(Set<IRI> graphNames) {
 		this.graphNames = graphNames;
 	}
 

@@ -21,18 +21,27 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import swiss.sib.swissprot.servicedescription.ClassPartition;
+import swiss.sib.swissprot.servicedescription.Generate;
 import swiss.sib.swissprot.servicedescription.GraphDescription;
 import swiss.sib.swissprot.servicedescription.PredicatePartition;
 import swiss.sib.swissprot.servicedescription.ServiceDescription;
 
 public class FindPredicateLinkSets extends QueryCallable<Exception> {
 	public static final Logger log = LoggerFactory.getLogger(FindPredicateLinkSets.class);
-	private static final String QUERY ="""
+	private static final String PER_GRAPH_QUERY ="""
 			SELECT (COUNT(?subject) AS ?count) 
 			WHERE {GRAPH ?graph {
 				?subject a ?sourceClass ; 
 					?predicate ?target. 
 				}
+			}
+			""";
+	
+	private static final String DEFAULT_GRAPH_QUERY ="""
+			SELECT (COUNT(?subject) AS ?count) 
+			WHERE {
+				?subject a ?sourceClass ; 
+					?predicate ?target. 
 			}
 			""";
 	private final Set<ClassPartition> classes;
@@ -100,16 +109,21 @@ public class FindPredicateLinkSets extends QueryCallable<Exception> {
 			PredicatePartition predicatePartition, ClassPartition source) {
 
 		try (RepositoryConnection localConnection = repository.getConnection()) {
-			TupleQuery tq = localConnection.prepareTupleQuery(QUERY);
-			tq.setBinding("graph", gd.getGraph());
+			TupleQuery tq = localConnection.prepareTupleQuery(DEFAULT_GRAPH_QUERY);
+			if (!Generate.isOnlyDefaultGraph(gd.getGraph()))
+			{
+				tq = localConnection.prepareTupleQuery(PER_GRAPH_QUERY);
+				tq.setBinding("graph", gd.getGraph());
+			}
 			tq.setBinding("sourceClass", source.getClazz());
 			tq.setBinding("predicate", predicatePartition.getPredicate());
-			setQuery(QUERY, tq.getBindings());
+			setQuery(PER_GRAPH_QUERY, tq.getBindings());
 			try (TupleQueryResult triples = tq.evaluate()) {
 				if (triples.hasNext()) {
 					return ((Literal) triples.next().getBinding("count").getValue()).longValue();
 				}
 			}
+			tq.clearBindings();
 		} catch (MalformedQueryException | QueryEvaluationException e) {
 			log.error("query failed", e);
 		}

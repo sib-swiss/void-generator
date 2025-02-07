@@ -42,6 +42,11 @@ public class ServiceDescription
 		distinctIriSubjectCount = 0L;
 	}
 
+	public GraphDescription getGraph(IRI graphName)
+	{
+		return gds.get(graphName.stringValue());
+	}
+	
 	public GraphDescription getGraph(String graphName)
 	{
 		return gds.get(graphName);
