@@ -35,6 +35,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.impl.client.LaxRedirectStrategy;
 import org.eclipse.rdf4j.model.IRI;
 import org.eclipse.rdf4j.model.ValueFactory;
 import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
@@ -213,6 +214,7 @@ public class Generate implements Callable<Integer> {
 			sr.enableQuadMode(true);
 			sr.setAdditionalHttpHeaders(Map.of("User-Agent", "void-generator"));
 			HttpClientBuilder hcb = HttpClientBuilder.create();
+			hcb.setRedirectStrategy(LaxRedirectStrategy.INSTANCE);
 			hcb.setMaxConnPerRoute(maxConcurrency).setMaxConnTotal(maxConcurrency).setUserAgent("void-generator-robot");
 			sr.setHttpClient(hcb.build());
 			repository = sr;
