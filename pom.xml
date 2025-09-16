@@ -4,7 +4,7 @@
   <groupId>io.github.sib-swiss</groupId>
   <artifactId>void-generator</artifactId>
   <packaging>jar</packaging>
-  <version>0.18</version>
+  <version>0.19-SNAPSHOT</version>
   <name>void-generator</name>
   <description>Generate void descriptions for SPARQL endpoints.</description>
   <url>https://github.com/sib-swiss/void-generator</url>
