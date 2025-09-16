@@ -131,7 +131,7 @@ public class ServiceDescriptionStatementGenerator {
 			statement(namedGraph, DCTERMS.TITLE, vf.createLiteral(gd.getTitle()));
 
 		if (gd.getLicense() != null)
-			statement(namedGraph, SD.GRAPH_PROPERTY, gd.getLicense());
+			statement(namedGraph, DCTERMS.LICENSE, gd.getLicense());
 
 		statement(graph, RDF.TYPE, SD.GRAPH_CLASS);
 		statement(graph, VOID.TRIPLES, vf.createLiteral(gd.getTripleCount()));
