@@ -7,7 +7,6 @@ import org.eclipse.rdf4j.model.IRI;
 
 import swiss.sib.swissprot.servicedescription.ClassPartition;
 import swiss.sib.swissprot.servicedescription.GraphDescription;
-import swiss.sib.swissprot.servicedescription.LinkSetToOtherGraph;
 import swiss.sib.swissprot.servicedescription.PredicatePartition;
 
 public interface Counters {
@@ -126,8 +125,8 @@ public interface Counters {
 
 	void countUniqueObjectsPerPredicateInGraph(CommonGraphVariables cv, PredicatePartition predicatePartition);
 
-	void countTriplesLinkingTwoTypesInDifferentGraphs(CommonGraphVariables cv, LinkSetToOtherGraph ls,
-			PredicatePartition pp);
+	void countTriplesLinkingTwoTypesInDifferentGraphs(CommonGraphVariables cv, IRI sourceType, Set<ClassPartition> cp, 
+			GraphDescription otherGraph, PredicatePartition pp);
 
 	boolean allInUnionGraph();
 

@@ -77,10 +77,7 @@ public final class IsSourceClassLinkedToDistinctClassInOtherGraph extends QueryC
 		if (otherGraph.getPredicates().isEmpty() || optimizeFor.preferGroupBy()) {
 			return rediscoverPossibleLinkClasses(connection, sourceType);
 		} else {
-			for (ClassPartition cp : otherGraph.getClasses()) {
-				LinkSetToOtherGraph ls = new LinkSetToOtherGraph(pp, sourceType, cp.getClazz(), otherGraph, cv.gd().getGraph());
-				counters.countTriplesLinkingTwoTypesInDifferentGraphs(cv, ls, pp);
-			}
+			counters.countTriplesLinkingTwoTypesInDifferentGraphs(cv, sourceType, otherGraph.getClasses(), otherGraph, pp);
 			return List.of();    
 		}
 	}

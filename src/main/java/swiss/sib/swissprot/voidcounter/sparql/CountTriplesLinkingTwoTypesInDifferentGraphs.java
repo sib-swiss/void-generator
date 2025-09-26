@@ -13,6 +13,8 @@ import org.eclipse.rdf4j.repository.RepositoryException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import swiss.sib.swissprot.servicedescription.ClassPartition;
+import swiss.sib.swissprot.servicedescription.GraphDescription;
 import swiss.sib.swissprot.servicedescription.LinkSetToOtherGraph;
 import swiss.sib.swissprot.servicedescription.OptimizeFor;
 import swiss.sib.swissprot.servicedescription.PredicatePartition;
@@ -35,6 +37,11 @@ public final class CountTriplesLinkingTwoTypesInDifferentGraphs extends QueryCal
 		this.ls = ls;
 		this.predicatePartition = predicatePartition;
 		this.countTriplesLinking = Helper.loadSparqlQuery("inter_graph_links", optimizeFor);
+	}
+
+	public CountTriplesLinkingTwoTypesInDifferentGraphs(CommonGraphVariables cv, IRI sourceType, ClassPartition cp,
+			GraphDescription otherGraph, PredicatePartition pp, OptimizeFor optimizeFor) {
+		this(cv, new LinkSetToOtherGraph(pp, sourceType, cp.getClazz(), otherGraph, cv.gd().getGraph()), pp, optimizeFor);
 	}
 
 	@Override

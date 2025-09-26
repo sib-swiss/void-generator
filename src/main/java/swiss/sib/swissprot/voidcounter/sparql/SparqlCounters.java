@@ -11,7 +11,6 @@ import org.eclipse.rdf4j.query.QueryEvaluationException;
 
 import swiss.sib.swissprot.servicedescription.ClassPartition;
 import swiss.sib.swissprot.servicedescription.GraphDescription;
-import swiss.sib.swissprot.servicedescription.LinkSetToOtherGraph;
 import swiss.sib.swissprot.servicedescription.OptimizeFor;
 import swiss.sib.swissprot.servicedescription.PredicatePartition;
 import swiss.sib.swissprot.voidcounter.CommonGraphVariables;
@@ -203,9 +202,14 @@ public class SparqlCounters implements Counters {
 	}
 
 	@Override
-	public void countTriplesLinkingTwoTypesInDifferentGraphs(CommonGraphVariables cv, LinkSetToOtherGraph ls,
+	public void countTriplesLinkingTwoTypesInDifferentGraphs(CommonGraphVariables cv, IRI sourceType, Set<ClassPartition> cps, 
+			GraphDescription otherGraph,
 			PredicatePartition pp) {
-		attempt(0, () -> new CountTriplesLinkingTwoTypesInDifferentGraphs(cv, ls, pp, optimizeFor));
+		if ((optimizeFor.preferGroupBy() || OptimizeFor.QLEVER.equals(optimizeFor)) && cps.size() > 1)
+			attempt(0, () -> new CountTriplesLinkingTypesInDifferentGraphs(cv, sourceType, cps, otherGraph, pp, optimizeFor));
+		else
+			for (ClassPartition cp : cps)
+				attempt(0, () -> new CountTriplesLinkingTwoTypesInDifferentGraphs(cv, sourceType, cp, otherGraph, pp, optimizeFor));
 	}
 
 	@Override

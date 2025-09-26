@@ -23,7 +23,6 @@ import org.slf4j.LoggerFactory;
 
 import swiss.sib.swissprot.servicedescription.ClassPartition;
 import swiss.sib.swissprot.servicedescription.GraphDescription;
-import swiss.sib.swissprot.servicedescription.LinkSetToOtherGraph;
 import swiss.sib.swissprot.servicedescription.OptimizeFor;
 import swiss.sib.swissprot.servicedescription.PredicatePartition;
 import swiss.sib.swissprot.voidcounter.CommonGraphVariables;
@@ -31,7 +30,6 @@ import swiss.sib.swissprot.voidcounter.CommonVariables;
 import swiss.sib.swissprot.voidcounter.FindGraphs;
 import swiss.sib.swissprot.voidcounter.QueryCallable;
 import swiss.sib.swissprot.voidcounter.Variables;
-import swiss.sib.swissprot.voidcounter.sparql.CountTriplesLinkingTwoTypesInDifferentGraphs;
 import swiss.sib.swissprot.voidcounter.sparql.FindNamedIndividualObjectSubjectForPredicateInGraph;
 import swiss.sib.swissprot.voidcounter.sparql.IsSourceClassLinkedToDistinctClassInOtherGraph;
 import swiss.sib.swissprot.voidcounter.sparql.IsSourceClassLinkedToDistinctClassInOtherGraphs;
@@ -150,12 +148,6 @@ public class VirtuosoCounters extends SparqlCounters {
 	public void countUniqueObjectsPerPredicateInGraph(CommonGraphVariables cv,
 			PredicatePartition predicatePartition) {
 		schedule(new CountUniqueObjectsPerPredicateInGraph(cv, predicatePartition));
-	}
-
-	@Override
-	public void countTriplesLinkingTwoTypesInDifferentGraphs(CommonGraphVariables cv, LinkSetToOtherGraph ls,
-			PredicatePartition pp) {
-		schedule(new CountTriplesLinkingTwoTypesInDifferentGraphs(cv, ls, pp, VIRTUOSO));
 	}
 	
 	@Override

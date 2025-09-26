@@ -2,6 +2,7 @@ package swiss.sib.swissprot.voidcounter.sparql;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Set;
 
@@ -14,7 +15,6 @@ import org.junit.jupiter.params.provider.EnumSource;
 
 import swiss.sib.swissprot.servicedescription.ClassPartition;
 import swiss.sib.swissprot.servicedescription.GraphDescription;
-import swiss.sib.swissprot.servicedescription.LinkSetToOtherGraph;
 import swiss.sib.swissprot.servicedescription.OptimizeFor;
 import swiss.sib.swissprot.servicedescription.PredicatePartition;
 
@@ -166,16 +166,40 @@ public class SparqlCounterTest extends CommonTest {
 				SimpleValueFactory.getInstance().createIRI("http://example.com/sourceClass"));
 		var targetClass = new ClassPartition(
 				SimpleValueFactory.getInstance().createIRI("http://example.com/targetClass"));
-		;
+		
 		var sourceGraph = new GraphDescription();
 		sourceGraph.setGraphName("http://example.com/graph");
 		var targetGraph = new GraphDescription();
 		targetGraph.setGraphName("http://example.com/otherGraph");
 		var sparqlCounters = new SparqlCounters(of, schedule, schedule);
-		var ls = new LinkSetToOtherGraph(predicatePartition, sourceClass.getClazz(), targetClass.getClazz(),
-				sourceGraph, targetGraph.getGraph());
-		sparqlCounters.countTriplesLinkingTwoTypesInDifferentGraphs(cv.with(emptyGd), ls, predicatePartition);
+		sparqlCounters.countTriplesLinkingTwoTypesInDifferentGraphs(cv.with(emptyGd), sourceClass.getClazz(), Set.of(targetClass), targetGraph, predicatePartition);
 		assertEquals(1, cv.finishedQueries().get());
+	}
+	
+	
+	@ParameterizedTest
+	@EnumSource(OptimizeFor.class)
+	void countTriplesLinkingManyTypesInDifferentGraphs(OptimizeFor of) {
+		var cv = createCommonVariables();
+		var predicatePartition = new PredicatePartition(RDF.PREDICATE);
+		var sourceClass1 = new ClassPartition(
+				SimpleValueFactory.getInstance().createIRI("http://example.com/sourceClass"));
+		var tc1 = new ClassPartition(
+				SimpleValueFactory.getInstance().createIRI("http://example.com/targetClass1"));
+		
+		var tc2 = new ClassPartition(
+				SimpleValueFactory.getInstance().createIRI("http://example.com/targetClass2"));
+		
+		var tc3 = new ClassPartition(
+				SimpleValueFactory.getInstance().createIRI("http://example.com/targetClass3"));
+		
+		var sourceGraph = new GraphDescription();
+		sourceGraph.setGraphName("http://example.com/graph");
+		var targetGraph = new GraphDescription();
+		targetGraph.setGraphName("http://example.com/otherGraph");
+		var sparqlCounters = new SparqlCounters(of, schedule, schedule);
+		sparqlCounters.countTriplesLinkingTwoTypesInDifferentGraphs(cv.with(emptyGd), sourceClass1.getClazz(), Set.of(tc1, tc2, tc3), targetGraph, predicatePartition);
+		assertTrue(cv.finishedQueries().get() == 1 || cv.finishedQueries().get() == 3, "If optimized for qlever or group by, only one query is needed, otherwise 3");
 	}
 
 	@ParameterizedTest
