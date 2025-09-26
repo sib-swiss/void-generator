@@ -27,6 +27,7 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -283,7 +284,7 @@ public class Generate implements Callable<Integer> {
 		executor = Executors.newFixedThreadPool(maxConcurrency);
 		delayedExecutor = CompletableFuture.delayedExecutor(1, TimeUnit.MINUTES, executor);
 		ReadWriteLock rwLock = new ReentrantReadWriteLock();
-		Consumer<ServiceDescription> saver = createSaver(rwLock);
+		Saver saver = createSaver(rwLock);
 		if (repository instanceof VirtuosoRepository) {
 			optimizeFor = "virtuoso";
 		}
@@ -308,8 +309,8 @@ public class Generate implements Callable<Integer> {
 		return res;
 	}
 
-	private Consumer<ServiceDescription> createSaver(ReadWriteLock rwLock) {
-		Consumer<ServiceDescription> saver;
+	private Saver createSaver(ReadWriteLock rwLock) {
+		Saver saver;
 		if (repository instanceof VirtuosoRepository) {
 			File distinctSubjectIrisFile = new File(sdFile.getAbsolutePath() + ".distinct-subjects");
 			File distinctObjectIrisFile = new File(sdFile.getAbsolutePath() + ".distinct-objects");
@@ -319,18 +320,44 @@ public class Generate implements Callable<Integer> {
 					distinctObjectIrisFile, forcedRefresh);
 			var vcounters = new VirtuosoCounters(distinctSubjectIris, distinctObjectIris, this::schedule);
 			this.counters = vcounters;
-			saver = sdg -> {
+			saver = new Saver(sdg -> {
 				writeServiceDescription(sdg, iriOfVoid, rwLock);
 				vcounters.writeGraphs(distinctSubjectIrisFile, distinctObjectIrisFile, rwLock);
-			};
+			});
 		} else {
 			OptimizeFor fromString = OptimizeFor.fromString(optimizeFor);
 			this.counters = new SparqlCounters(fromString, this::schedule, this::scheduleAgain);
-			saver = sdg -> writeServiceDescription(sdg, iriOfVoid, rwLock);
+			saver = new Saver(sdg -> writeServiceDescription(sdg, iriOfVoid, rwLock));
 		}
 		return saver;
 	}
 
+	private class Saver implements Consumer<ServiceDescription> {
+		private static final int EVERY_X = 10 * 1000; // Write at most once every 10 seconds
+		private final AtomicLong lastWrite = new AtomicLong();
+		private final Consumer<ServiceDescription> actualSaver;
+		
+		public Saver(Consumer<ServiceDescription> actualSaver) {
+			this.actualSaver = actualSaver;
+		}
+
+		@Override
+		public void accept(ServiceDescription sdg) {
+			long write = System.currentTimeMillis()- EVERY_X;
+			long lw = lastWrite.get();
+			// Only one thread will do the write because
+			// lw must be smaller than the current time - 10 seconds
+			// and no other thread must have updated lastWrite in the meantime
+			if (lw < write  && lastWrite.compareAndSet(lw, write)) {
+				actualSaver.accept(sdg);
+			}
+		}
+		
+		public void finish(ServiceDescription sdg) {
+			actualSaver.accept(sdg);
+		}
+	}
+	
 	private void writeServiceDescription(ServiceDescription sdg, IRI iriOfVoid, ReadWriteLock rwLock) {
 		final Lock readLock = rwLock.readLock();
 		try {
@@ -347,9 +374,9 @@ public class Generate implements Callable<Integer> {
 		}
 	}
 
-	private void saveResults(IRI graphUri, Consumer<ServiceDescription> saver) {
+	private void saveResults(IRI graphUri, Saver saver) {
 		sd.setTotalTripleCount(sd.getGraphs().stream().mapToLong(GraphDescription::getTripleCount).sum());
-		saver.accept(sd);
+		saver.finish(sd);
 		if (addResultsToStore) {
 			try (RepositoryConnection connection = repository.getConnection()) {
 				clearGraph(connection, graphUri);
@@ -379,7 +406,7 @@ public class Generate implements Callable<Integer> {
 				else if (next.isDone())
 					futures.remove(last);
 				else {
-					log.info("Queries " + finishedQueries.get() + "/" + scheduledQueries.get());
+					log.info("Queries {} / {} ",finishedQueries.get(), scheduledQueries.get());
 					loop = checkProgress(futures, loop, last, next);
 				}
 			}
@@ -387,11 +414,11 @@ public class Generate implements Callable<Integer> {
 			Thread.currentThread().interrupt();
 		}
 		if (finishedQueries.get() == scheduledQueries.get()) {
-			log.info("Ran " + finishedQueries.get() + " queries");
+			log.info("Ran {} queries", finishedQueries.get());
 		} else if (finishedQueries.get() < scheduledQueries.get()) {
-			log.error("Scheduled more queries than finished: " + finishedQueries.get() + "/" + scheduledQueries.get());
+			log.error("Scheduled more queries than finished: {} / {}", finishedQueries.get(),  scheduledQueries.get());
 		} else {
-			log.error("Finished more queries than scheduled: " + finishedQueries.get() + "/" + scheduledQueries.get());
+			log.error("Finished more queries than scheduled: {} / {}", finishedQueries.get(), scheduledQueries.get());
 		}
 		return scheduledQueries.get() - finishedQueries.get();
 	}
@@ -423,10 +450,10 @@ public class Generate implements Callable<Integer> {
 		// exceptions
 		for (var qc : List.copyOf(tasks))
 			if (qc.isRunning())
-				log.info("Running: " + qc.getClass() + " -> " + qc.getQuery());
+				log.info("Running: {} -> {}", qc.getClass(), qc.getQuery());
 	}
 
-	private CommonVariables scheduleCounters(ServiceDescription sd, Consumer<ServiceDescription> saver, ReadWriteLock rwLock) {
+	private CommonVariables scheduleCounters(ServiceDescription sd, Saver saver, ReadWriteLock rwLock) {
 
 		CommonVariables cv = new CommonVariables(sd, repository, saver, rwLock, limit, finishedQueries);
 		determineGraphNames(sd, saver, rwLock);
