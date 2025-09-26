@@ -333,7 +333,7 @@ public class Generate implements Callable<Integer> {
 	}
 
 	private class Saver implements Consumer<ServiceDescription> {
-		private static final int EVERY_X = 10 * 1000; // Write at most once every 10 seconds
+		private static final int EVERY_X = 60_000; // Write at most once every minute
 		private final AtomicLong lastWrite = new AtomicLong();
 		private final Consumer<ServiceDescription> actualSaver;
 		
@@ -346,7 +346,7 @@ public class Generate implements Callable<Integer> {
 			long write = System.currentTimeMillis()- EVERY_X;
 			long lw = lastWrite.get();
 			// Only one thread will do the write because
-			// lw must be smaller than the current time - 10 seconds
+			// lw must be smaller than the current time - EVERY_X seconds
 			// and no other thread must have updated lastWrite in the meantime
 			if (lw < write  && lastWrite.compareAndSet(lw, write)) {
 				actualSaver.accept(sdg);
