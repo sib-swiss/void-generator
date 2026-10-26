@@ -17,7 +17,6 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
@@ -53,7 +52,6 @@ import org.eclipse.rdf4j.rio.RDFFormat;
 import org.eclipse.rdf4j.rio.RDFParseException;
 import org.eclipse.rdf4j.rio.Rio;
 import org.eclipse.rdf4j.sail.memory.MemoryStore;
-import org.roaringbitmap.longlong.Roaring64NavigableMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -66,8 +64,6 @@ import swiss.sib.swissprot.voidcounter.Counters;
 import swiss.sib.swissprot.voidcounter.QueryCallable;
 import swiss.sib.swissprot.voidcounter.Variables;
 import swiss.sib.swissprot.voidcounter.sparql.SparqlCounters;
-import swiss.sib.swissprot.voidcounter.virtuoso.VirtuosoCounters;
-import virtuoso.rdf4j.driver.VirtuosoRepository;
 
 @Command(name = "void-generate", mixinStandardHelpOptions = true, description = "Generate a void file", versionProvider = GitPropertiesVersionFetch.class)
 public class Generate implements Callable<Integer> {
@@ -91,10 +87,6 @@ public class Generate implements Callable<Integer> {
 
 	@Option(names = { "-s", "--void-file" }, required = true)
 	private File sdFile;
-
-
-	@Option(names = { "--virtuoso-jdbc" }, description = "A virtuoso jdbc connection string")
-	private String virtuosoJdcb;
 
 	@Option(names = { "-r", "--repository" }, description = "A SPARQL http/https endpoint location")
 	private String repositoryLocator;
@@ -194,9 +186,7 @@ public class Generate implements Callable<Integer> {
 		} else
 			this.knownPredicates = new HashSet<>();
 
-		if (virtuosoJdcb != null) {
-			repository = new VirtuosoRepository(virtuosoJdcb, user, password);
-		} else if (fromTestFile != null) {
+	    if (fromTestFile != null) {
 			MemoryStore ms = new MemoryStore();
 			ms.init();
 
@@ -221,10 +211,6 @@ public class Generate implements Callable<Integer> {
 			repository = sr;
 		}
 		var update = update();
-		// Virtuoso was not started by us so we should not send it a shutdown command
-		if (virtuosoJdcb == null) {
-			repository.shutDown();
-		}
 		if (update > 0) {
 			log.error("There were {} queries that did not finish", update);
 			return update;
@@ -285,9 +271,6 @@ public class Generate implements Callable<Integer> {
 		delayedExecutor = CompletableFuture.delayedExecutor(1, TimeUnit.MINUTES, executor);
 		ReadWriteLock rwLock = new ReentrantReadWriteLock();
 		Saver saver = createSaver(rwLock);
-		if (repository instanceof VirtuosoRepository) {
-			optimizeFor = "virtuoso";
-		}
 		log.info("Optimizing for backing store: {}", optimizeFor);
 
 		CommonVariables cv = scheduleCounters(sd, saver, rwLock);
@@ -310,26 +293,9 @@ public class Generate implements Callable<Integer> {
 	}
 
 	private Saver createSaver(ReadWriteLock rwLock) {
-		Saver saver;
-		if (repository instanceof VirtuosoRepository) {
-			File distinctSubjectIrisFile = new File(sdFile.getAbsolutePath() + ".distinct-subjects");
-			File distinctObjectIrisFile = new File(sdFile.getAbsolutePath() + ".distinct-objects");
-			ConcurrentMap<String, Roaring64NavigableMap> distinctSubjectIris = VirtuosoCounters.readGraphsWithSerializedBitMaps(
-					distinctSubjectIrisFile, forcedRefresh);
-			ConcurrentMap<String, Roaring64NavigableMap> distinctObjectIris = VirtuosoCounters.readGraphsWithSerializedBitMaps(
-					distinctObjectIrisFile, forcedRefresh);
-			var vcounters = new VirtuosoCounters(distinctSubjectIris, distinctObjectIris, this::schedule);
-			this.counters = vcounters;
-			saver = new Saver(sdg -> {
-				writeServiceDescription(sdg, iriOfVoid, rwLock);
-				vcounters.writeGraphs(distinctSubjectIrisFile, distinctObjectIrisFile, rwLock);
-			});
-		} else {
-			OptimizeFor fromString = OptimizeFor.fromString(optimizeFor);
-			this.counters = new SparqlCounters(fromString, this::schedule, this::scheduleAgain);
-			saver = new Saver(sdg -> writeServiceDescription(sdg, iriOfVoid, rwLock));
-		}
-		return saver;
+		OptimizeFor fromString = OptimizeFor.fromString(optimizeFor);
+        this.counters = new SparqlCounters(fromString, this::schedule, this::scheduleAgain);
+        return new Saver(sdg -> writeServiceDescription(sdg, iriOfVoid, rwLock));
 	}
 
 	private class Saver implements Consumer<ServiceDescription> {
@@ -646,10 +612,6 @@ public class Generate implements Callable<Integer> {
 
 	public void setFindDistinctClasses(boolean findDistinctClasses) {
 		this.findDistinctClasses = findDistinctClasses;
-	}
-
-	public void setVirtuosoJdcb(String virtuosoJdcb) {
-		this.virtuosoJdcb = virtuosoJdcb;
 	}
 
 	public void setUser(String user) {

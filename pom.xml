@@ -14,8 +14,6 @@
   </scm>
   <properties>
     <rdf4j.version>5.3.0</rdf4j.version>
-    <virt.rdf4j.version>1.19</virt.rdf4j.version>
-    <virt.jdbc.version>3.123</virt.jdbc.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <picocli.version>4.7.6</picocli.version>
   </properties>
@@ -108,16 +106,6 @@
     <dependency>
       <groupId>org.eclipse.rdf4j</groupId>
       <artifactId>rdf4j-repository-sail</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>com.openlinksw</groupId>
-      <artifactId>virtjdbc4_3</artifactId>
-      <version>${virt.jdbc.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>com.openlinksw</groupId>
-      <artifactId>virt_rdf4j_v5_1</artifactId>
-      <version>${virt.rdf4j.version}</version>
     </dependency>
     <dependency>
       <groupId>org.apache.commons</groupId>
