@@ -259,24 +259,6 @@
         </executions>
       </plugin>
       <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-gpg-plugin</artifactId>
-        <version>3.1.0</version>
-        <executions>
-          <execution>
-            <id>sign-artifacts</id>
-            <phase>verify</phase>
-            <goals>
-              <goal>sign</goal>
-            </goals>
-          </execution>
-        </executions>
-        <configuration>
-          <keyname>${gpg.keyname}</keyname>
-          <passphraseServerId>${gpg.keyname}</passphraseServerId>
-        </configuration>
-      </plugin>
-      <plugin>
         <groupId>io.github.git-commit-id</groupId>
         <artifactId>git-commit-id-maven-plugin</artifactId>
         <version>9.0.2</version>
@@ -335,4 +317,56 @@
       </plugin>
     </plugins>
   </reporting>
+  <profiles>
+    <!--
+      gpg:sign used to be bound to the verify phase unconditionally, which
+      made every local mvn verify/install/deploy demand a configured
+      signing key, even though only an actual release upload needs signed
+      artifacts (the README's -Dgpg.skip note was the workaround). Moving
+      the plugin into this profile, activated by the performRelease
+      property, fixes that without the correctness risk of instead
+      rebinding gpg:sign to the deploy phase itself: within one phase,
+      explicitly-declared executions are not guaranteed to run before a
+      packaging's own default-bound goals (here, central-publishing-maven-plugin's
+      publish goal, also bound to the deploy phase via its extensions flag):
+      signing could then race the upload and artifacts could get published
+      unsigned. Binding stays on verify, just gated to when it matters.
+
+      maven-release-plugin (already used for this project's releases, see
+      git history) sets performRelease=true automatically during
+      release:perform, so a normal release build signs exactly as before;
+      mvn verify/install/deploy run outside of that never do.
+    -->
+    <profile>
+      <id>release-sign-artifacts</id>
+      <activation>
+        <property>
+          <name>performRelease</name>
+          <value>true</value>
+        </property>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <version>3.1.0</version>
+            <executions>
+              <execution>
+                <id>sign-artifacts</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>sign</goal>
+                </goals>
+              </execution>
+            </executions>
+            <configuration>
+              <keyname>${gpg.keyname}</keyname>
+              <passphraseServerId>${gpg.keyname}</passphraseServerId>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>
