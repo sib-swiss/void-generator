@@ -29,10 +29,16 @@ public class ServiceDescriptionStatementGenerator {
 
 	public void generateStatements(IRI endpoint, IRI iriOfVoid, ServiceDescription item) {
 
-		Resource defaultDatasetId = vf.createIRI(endpoint.getNamespace(),
-				endpoint.getLocalName() + "#sparql-default-dataset");
-		Resource defaultGraphId = vf.createIRI(iriOfVoid.getNamespace(),
-				iriOfVoid.getLocalName() + "#sparql-default-graph");
+		// Rebuilding via getNamespace()+getLocalName()+literal "#..." suffix has the
+		// same failure mode as the void:Dataset partition IRIs below: if endpoint or
+		// iriOfVoid already ends in '#' (a common, documented convention for
+		// --iri-of-void), getLocalName() is empty and the literal "#" produces a
+		// doubled fragment separator, invalid per RFC 3986. ensureFragmentSeparator
+		// on the plain stringValue() avoids reconstructing namespace+localName at all.
+		Resource defaultDatasetId = vf.createIRI(ensureFragmentSeparator(endpoint.stringValue()),
+				"sparql-default-dataset");
+		Resource defaultGraphId = vf.createIRI(ensureFragmentSeparator(iriOfVoid.stringValue()),
+				"sparql-default-graph");
 		statement(endpoint, RDF.TYPE, SD.SERVICE);
 		statement(endpoint, SD.DEFAULT_DATASET, defaultDatasetId);
 		statement(endpoint, SD.ENDPOINT, endpoint);
@@ -50,8 +56,8 @@ public class ServiceDescriptionStatementGenerator {
 		}
 
 		describeDefaultGraph(item, defaultGraphId, calendar);
-		Resource graphCollectionId = vf.createIRI(iriOfVoid.getNamespace(),
-				iriOfVoid.getLocalName() + "#sparql-graph-collection");
+		Resource graphCollectionId = vf.createIRI(ensureFragmentSeparator(iriOfVoid.stringValue()),
+				"sparql-graph-collection");
 		
 		statement(endpoint, SD.AVAILBLE_GRAPHS, graphCollectionId);
 
@@ -180,7 +186,8 @@ public class ServiceDescriptionStatementGenerator {
 	}
 
 	public IRI getResourceForGraph(IRI graphName, String voidLocation) {
-		return vf.createIRI(voidLocation, "#_graph_" + graphName.getLocalName() + "!" + hash(graphName.stringValue()));
+		voidLocation = ensureFragmentSeparator(voidLocation);
+		return vf.createIRI(voidLocation, "_graph_" + graphName.getLocalName() + "!" + hash(graphName.stringValue()));
 	}
 
 	private String hash(String graphName) {
@@ -270,10 +277,11 @@ public class ServiceDescriptionStatementGenerator {
 
 	private void generateClassPartitionsAsLinkset(IRI namedGraph, ClassPartition cp, PredicatePartition pp,
 			String voidLocation, IRI iriOfType, GraphDescription gp, IRI graph) {
+		voidLocation = ensureFragmentSeparator(voidLocation);
 		for (ClassPartition cpp : pp.getClassPartitions()) {
 			String hash = hash(pp.getPredicate(),  cp.getClazz(), cpp.getClazz(), gp.getGraph(), gp.getGraph());
 			Resource bNode = vf.createIRI(voidLocation,
-					"#linkset_" + hash + pp.getPredicate().getLocalName());
+					"linkset_" + hash + pp.getPredicate().getLocalName());
 			statement(bNode, RDF.TYPE, VOID.LINKSET);
 			statement(bNode, VOID.LINK_PREDICATE, pp.getPredicate());
 			statement(bNode, VOID.SUBJECTS_TARGET, iriOfType);
@@ -287,7 +295,7 @@ public class ServiceDescriptionStatementGenerator {
 		var hash = hash(pp.getPredicate(), ls.getSourceType(), ls.getTargetType(), ls.getOtherGraph().getGraph(),
 				graph);
 
-		Resource bNode = vf.createIRI(voidLocation, "#linkset_"
+		Resource bNode = vf.createIRI(ensureFragmentSeparator(voidLocation), "linkset_"
 				+ hash
 				+ pp.getPredicate().getLocalName());
 		statement(bNode, RDF.TYPE, VOID.LINKSET);
@@ -367,11 +375,18 @@ public class ServiceDescriptionStatementGenerator {
 	 * with nothing between them, producing a syntactically valid but
 	 * malformed-looking IRI (e.g. ".../voidchebi!...!-Class-name" instead of
 	 * ".../void#chebi!...!-Class-name"). getResourceForPartition already
-	 * guards against this; this makes the same guard available to the
-	 * sub-partition resource IRIs.
+	 * guards against this; this makes the same guard available everywhere
+	 * voidLocation is used to mint a resource IRI.
+	 *
+	 * Checking contains("#") rather than endsWith("#") matters: a
+	 * voidLocation with a '#' anywhere (not just at the end) already has a
+	 * URI fragment, and a URI can only have one -- appending a second '#'
+	 * would produce an IRI with two fragments, invalid per RFC 3986 (the
+	 * same failure mode this guards against, just introduced a different
+	 * way). Only append when there is no '#' at all yet.
 	 */
 	private static String ensureFragmentSeparator(String voidLocation) {
-		return voidLocation.endsWith("#") ? voidLocation : voidLocation + "#";
+		return voidLocation.contains("#") ? voidLocation : voidLocation + "#";
 	}
 
 	protected IRI getResourceForPartition(final IRI namedGraph, final IRI rt, String voidLocation) {
@@ -381,36 +396,11 @@ public class ServiceDescriptionStatementGenerator {
 	}
 
 	protected IRI getIRI(final String rawGraphName) {
-		if (rawGraphName.endsWith("/")) {
-			final int lastIndexOf = Math.max(rawGraphName.lastIndexOf('/', rawGraphName.length() - 2),
-					rawGraphName.lastIndexOf('#'));
-			String namespace = rawGraphName.substring(0, lastIndexOf + 1);
-			String name = rawGraphName.substring(lastIndexOf + 1, rawGraphName.length() - 1);
-			return vf.createIRI(namespace, name);
-		} else {
-			final int lastIndexOf = Math.max(rawGraphName.lastIndexOf('/', rawGraphName.length() - 1),
-					rawGraphName.lastIndexOf('#'));
-			String namespace = rawGraphName.substring(0, lastIndexOf + 1);
-			String name = rawGraphName.substring(lastIndexOf + 1);
-			return vf.createIRI(namespace, name);
-		}
+		return PurlResolver.resolve(rawGraphName, vf);
 	}
 
 	protected IRI getIRI(final Resource graphName) {
-		String rawGraphName = graphName.toString();
-		if (rawGraphName.endsWith("/")) {
-			final int lastIndexOf = Math.max(rawGraphName.lastIndexOf('/', rawGraphName.length() - 2),
-					rawGraphName.lastIndexOf('#'));
-			String namespace = rawGraphName.substring(0, lastIndexOf + 1);
-			String name = rawGraphName.substring(lastIndexOf + 1, rawGraphName.length() - 1);
-			return vf.createIRI(namespace, name);
-		} else {
-			final int lastIndexOf = Math.max(rawGraphName.lastIndexOf('/', rawGraphName.length() - 1),
-					rawGraphName.lastIndexOf('#'));
-			String namespace = rawGraphName.substring(0, lastIndexOf + 1);
-			String name = rawGraphName.substring(lastIndexOf + 1);
-			return vf.createIRI(namespace, name);
-		}
+		return PurlResolver.resolve(graphName.toString(), vf);
 	}
 
 	protected void supportedFormats(Resource subject) {

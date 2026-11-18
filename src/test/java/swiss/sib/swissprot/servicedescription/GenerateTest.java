@@ -70,21 +70,69 @@ public class GenerateTest {
 	@ParameterizedTest
 	@MethodSource("optimizeFor")
 	public void generate(String of) throws Exception {
-		Generate g = new Generate();
 		assertTrue(tempDir.isDirectory());
-		g.setGraphNames(new HashSet<>());
 		File sdFile = new File(tempDir, "void.ttl");
-		g.setSdFile(sdFile);
-		g.setIriOfVoidAsString("https://example.org/.well-known/void");
-		g.setRepository(sr);
-		g.setRepositoryLocator("https://example.org/sparql");
-		g.setOptimizeFor(of);
+		Generate g = newGenerate(of, sdFile);
 		g.update();
 		assertEquals(g.getFinishedQueries(), g.getScheduledQueries());
 		assertTrue(sdFile.exists());
 		assertTrue(sdFile.length() > 0);
 		assertNoMalformedSubPartitionIris(sdFile);
+		assertNoDoubleHashInAnyIri(sdFile);
 		assertDistinctSubjectsProvesFunctional(sdFile);
+	}
+
+	/**
+	 * --iri-of-void ending in '#' is a documented, common convention (the
+	 * project's own README example uses one) but was never exercised by
+	 * generate() above, whose fixture iri-of-void does not end in '#'. That
+	 * gap let getResourceForGraph, generateLinkset and the sd:Service-level
+	 * IRIs in generateStatements (sparql-default-dataset/-graph/
+	 * -graph-collection) each mint a doubled '#' for this exact, ordinary
+	 * configuration -- caught by manually reproducing it, not by this suite,
+	 * which is why this test exists now.
+	 */
+	@ParameterizedTest
+	@MethodSource("optimizeFor")
+	public void generateWithTrailingHashIriOfVoid(String of) throws Exception {
+		File sdFile = new File(tempDir, "void.ttl");
+		Generate g = newGenerate(of, sdFile, "https://example.org/.well-known/void#");
+		g.update();
+		assertTrue(sdFile.length() > 0);
+		assertNoMalformedSubPartitionIris(sdFile);
+		assertNoDoubleHashInAnyIri(sdFile);
+	}
+
+	private void assertNoDoubleHashInAnyIri(File sdFile) throws IOException {
+		Model model = Rio.parse(sdFile.toURI().toURL().openStream(), RDFFormat.TURTLE);
+		for (var statement : model) {
+			for (Value term : new Value[] { statement.getSubject(), statement.getPredicate(), statement.getObject() }) {
+				if (term instanceof IRI iri) {
+					assertTrue(!iri.stringValue().contains("##"),
+							() -> "IRI has a doubled '#' fragment separator: " + iri.stringValue());
+				}
+			}
+		}
+	}
+
+	/**
+	 * Shared setup for a Generate run against the tutorial fixture, used by
+	 * every test in this class -- extracted so they can't silently drift out
+	 * of sync with each other.
+	 */
+	private Generate newGenerate(String optimizeFor, File sdFile) {
+		return newGenerate(optimizeFor, sdFile, "https://example.org/.well-known/void");
+	}
+
+	private Generate newGenerate(String optimizeFor, File sdFile, String iriOfVoid) {
+		Generate g = new Generate();
+		g.setGraphNames(new HashSet<>());
+		g.setSdFile(sdFile);
+		g.setIriOfVoidAsString(iriOfVoid);
+		g.setRepository(sr);
+		g.setRepositoryLocator("https://example.org/sparql");
+		g.setOptimizeFor(optimizeFor);
+		return g;
 	}
 
 	/**
@@ -121,14 +169,8 @@ public class GenerateTest {
 	 */
 	@Test
 	public void distinctSubjectsProvesRequiredProperty() throws Exception {
-		Generate g = new Generate();
 		File sdFile = new File(tempDir, "void.ttl");
-		g.setGraphNames(new HashSet<>());
-		g.setSdFile(sdFile);
-		g.setIriOfVoidAsString("https://example.org/.well-known/void");
-		g.setRepository(sr);
-		g.setRepositoryLocator("https://example.org/sparql");
-		g.setOptimizeFor(OptimizeFor.SPARQL.name());
+		Generate g = newGenerate(OptimizeFor.SPARQL.name(), sdFile);
 		g.update();
 
 		Model model = Rio.parse(sdFile.toURI().toURL().openStream(), RDFFormat.TURTLE);
@@ -188,18 +230,27 @@ public class GenerateTest {
 	 * ".../void#fruits!...!-Fruit-color") -- still syntactically valid, but
 	 * wrong, and inconsistent with getResourceForPartition's own IRIs in the
 	 * same file. Guard against regressing that fix.
+	 *
+	 * Checks RDF4J's own namespace/localName split (the same split any
+	 * consumer of these IRIs will use) rather than hand-rolled index
+	 * arithmetic: a prior version of this check only confirmed *some* '#'
+	 * existed before the first '!', which would also pass on an unrelated
+	 * earlier '#' followed by a still-missing separator, or on a genuinely
+	 * doubled '#' (both fragments present) -- neither is a valid IRI.
 	 */
 	private void assertNoMalformedSubPartitionIris(File sdFile) throws IOException {
 		Model model = Rio.parse(sdFile.toURI().toURL().openStream(), RDFFormat.TURTLE);
 		for (var statement : model) {
 			for (Value term : new Value[] { statement.getSubject(), statement.getObject() }) {
-				if (term instanceof IRI iri) {
-					String s = iri.stringValue();
-					int bang = s.indexOf('!');
-					if (bang >= 0) {
-						assertTrue(s.lastIndexOf('#', bang) >= 0,
-								"sub-partition IRI is missing a '#' separator before its hashed local name: " + s);
-					}
+				if (term instanceof IRI iri && iri.getLocalName().indexOf('!') >= 0) {
+					String ns = iri.getNamespace();
+					long hashCount = ns.chars().filter(c -> c == '#').count();
+					assertEquals(1, hashCount,
+							() -> "sub-partition IRI's namespace has " + hashCount
+									+ " '#' characters, expected exactly 1: " + iri.stringValue());
+					assertTrue(ns.endsWith("#"),
+							() -> "sub-partition IRI is missing a '#' separator right before its hashed local name: "
+									+ iri.stringValue());
 				}
 			}
 		}
