@@ -19,7 +19,6 @@ final class CountDistinctIriObjectsInDefaultGraph
 	public CountDistinctIriObjectsInDefaultGraph(CommonVariables cv)
 	{
 		super(cv);
-		assert cv.repository() instanceof VirtuosoRepositoryConnection;
 	}
 
 	@Override
@@ -52,7 +51,7 @@ final class CountDistinctIriObjectsInDefaultGraph
 		if (connection instanceof VirtuosoRepositoryConnection vrc)
 		{
 			//See http://docs.openlinksw.com/virtuoso/rdfiriidtype/
-			setQuery("SELECT (COUNT(DISTINCT(iri_id_num(RDF_QUAD.O)))) FROM RDF_QUAD AND isiri_id(RDF_QUAD.O) > 0 AND is_bnode_iri_id(RDF_QUAD.O) = 0");
+			setQuery("SELECT (COUNT(DISTINCT(iri_id_num(RDF_QUAD.O)))) FROM RDF_QUAD WHERE isiri_id(RDF_QUAD.O) > 0 AND is_bnode_iri_id(RDF_QUAD.O) = 0");
 			return VirtuosoFromSQL.getSingleLongFromSql(getQuery(), vrc);
 		} else {
 			throw new IllegalStateException("Connection is not VirtuosoRepositoryConnection");

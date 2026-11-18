@@ -157,7 +157,14 @@ public class VirtuosoCounters extends SparqlCounters {
 
 	@Override
 	public void countDistinctIriSubjectsAndObjectsInDefaultGraph(CommonVariables cv) {
-		throw new IllegalStateException("Virtuoso has a default graph, should not use this");
+		// Counters.countDistinctObjectsSubjectsInDefaultGraph only reaches this
+		// combined method when both counts are wanted, as an optimization for
+		// backends that can get both in one query; Virtuoso has no such combined
+		// query, but countDistinctIriSubjectsForDefaultGraph/
+		// countDistinctIriObjectsForDefaultGraph are independent SQL queries each,
+		// so running both is exactly equivalent (just not combined into one).
+		schedule(new CountDistinctIriSubjectsInDefaultGraph(cv));
+		schedule(new CountDistinctIriObjectsInDefaultGraph(cv));
 	}
 
 	@Override
