@@ -207,6 +207,19 @@
         <version>3.7.1</version>
       </plugin>
       <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-release-plugin</artifactId>
+        <version>3.1.1</version>
+        <configuration>
+          <!-- Matches the tag naming every release since v0.4 actually used
+               (v0.12 .. v0.19); the plugin's own default is
+               @{artifactId}-@{version}, which only the very first releases
+               used (e.g. void-generator-0.9) before the convention changed. -->
+          <tagNameFormat>v@{project.version}</tagNameFormat>
+          <releaseProfiles>release-sign-artifacts</releaseProfiles>
+        </configuration>
+      </plugin>
+      <plugin>
         <groupId>au.com.acegi</groupId>
         <artifactId>xml-format-maven-plugin</artifactId>
         <version>3.3.1</version>

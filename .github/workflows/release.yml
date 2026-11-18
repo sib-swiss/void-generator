@@ -1,0 +1,109 @@
+# Cuts a release: bumps the pom to a release version, tags it (v<version>,
+# matching every tag since v0.4), deploys the signed artifacts to Maven
+# Central, then bumps the pom to the next -SNAPSHOT and pushes both commits
+# and the tag back to the repository. This is what `mvn release:prepare
+# release:perform` already does locally -- this workflow just runs that
+# same, already-established process in CI instead.
+#
+# Manually triggered only (workflow_dispatch): a release is a one-way,
+# externally-visible action (a Maven Central publish can't be unpublished),
+# so this is deliberately never run on a push/PR trigger. Use the dry-run
+# input to rehearse the prepare step (version bumps, tag name) without
+# committing, tagging, pushing, or deploying anything.
+#
+# Needs these repository secrets to actually do anything:
+#   GPG_PRIVATE_KEY   - ASCII-armored private key (`gpg --export-secret-keys --armor <keyname>`)
+#   GPG_KEYNAME        - the key's id/fingerprint (matches pom.xml's ${gpg.keyname})
+#   GPG_PASSPHRASE     - passphrase for that key
+#   CENTRAL_USERNAME   - Maven Central Portal user token username
+#   CENTRAL_PASSWORD   - Maven Central Portal user token password
+# Without them configured, this workflow exists but cannot succeed past the
+# point a credential is actually needed -- it is safe to merge in before
+# those secrets are added to the repository.
+
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      dryRun:
+        description: "Dry run: rehearse release:prepare (version bumps, tag name) without committing, tagging, pushing or deploying"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # workflow_dispatch lets whoever runs it pick any branch; releases should
+    # only ever come from main.
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Configure git identity for the release commits
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # actions/checkout leaves the repo on a detached HEAD, which
+          # maven-release-plugin cannot commit/push from -- reattach to the
+          # branch that was actually checked out.
+          git checkout -B "${{ github.ref_name }}"
+
+      - name: Import GPG signing key
+        if: ${{ !inputs.dryRun }}
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: |
+          printf '%s' "$GPG_PRIVATE_KEY" | gpg --batch --yes --import
+
+      - name: Write Maven settings.xml for signing and Central Publishing
+        if: ${{ !inputs.dryRun }}
+        env:
+          GPG_KEYNAME: ${{ secrets.GPG_KEYNAME }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<EOF
+          <settings>
+            <servers>
+              <server>
+                <id>${GPG_KEYNAME}</id>
+                <passphrase>${GPG_PASSPHRASE}</passphrase>
+              </server>
+              <server>
+                <id>central</id>
+                <username>${CENTRAL_USERNAME}</username>
+                <password>${CENTRAL_PASSWORD}</password>
+              </server>
+            </servers>
+          </settings>
+          EOF
+
+      - name: Dry-run release:prepare (no commit, tag, push or deploy)
+        if: ${{ inputs.dryRun }}
+        run: mvn -B release:prepare -DdryRun=true
+
+      - name: release:prepare and release:perform
+        if: ${{ !inputs.dryRun }}
+        env:
+          GPG_KEYNAME: ${{ secrets.GPG_KEYNAME }}
+        run: |
+          mvn -B release:prepare
+          mvn -B release:perform -Darguments="-Dgpg.keyname=${GPG_KEYNAME}"
