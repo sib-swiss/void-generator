@@ -9,14 +9,14 @@
 
 ex:count_subjects_with_a_type_and_predicate a sh:SPARQLExecutable,
         sh:SPARQLSelectExecutable ;
-    rdfs:comment "Count the number of predicate linksets."^^rdf:HTML ;
+    rdfs:comment "Count the number of predicate linksets, and how many distinct subjects they involve (?count == ?distinctSubjects proves the predicate is functional for this class; comparing ?distinctSubjects to the class' void:entities count proves whether it is required)."^^rdf:HTML ;
     sh:prefixes _:sparql_examples_prefixes ;
     sh:select """SELECT
-  (COUNT(?subject) AS ?count) 
+  (COUNT(?subject) AS ?count) (COUNT(DISTINCT ?subject) AS ?distinctSubjects)
 WHERE {
   GRAPH ?graph {
-  	?subject a ?sourceClass ; 
-      ?predicate ?target. 
+  	?subject a ?sourceClass ;
+      ?predicate ?target.
   }
 }""" ;
     schema:keywords "void" , "predicate", "count", "type" ;

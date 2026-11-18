@@ -11,7 +11,10 @@ import java.util.HashSet;
 
 import org.eclipse.rdf4j.model.IRI;
 import org.eclipse.rdf4j.model.Model;
+import org.eclipse.rdf4j.model.Resource;
 import org.eclipse.rdf4j.model.Value;
+import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
+import org.eclipse.rdf4j.model.vocabulary.VOID;
 import org.eclipse.rdf4j.repository.RepositoryException;
 import org.eclipse.rdf4j.repository.sail.SailRepository;
 import org.eclipse.rdf4j.repository.sail.SailRepositoryConnection;
@@ -21,6 +24,7 @@ import org.eclipse.rdf4j.rio.Rio;
 import org.eclipse.rdf4j.sail.memory.MemoryStore;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -80,6 +84,100 @@ public class GenerateTest {
 		assertTrue(sdFile.exists());
 		assertTrue(sdFile.length() > 0);
 		assertNoMalformedSubPartitionIris(sdFile);
+		assertDistinctSubjectsProvesFunctional(sdFile);
+	}
+
+	/**
+	 * In the tutorial fixture every Apple has exactly one color (3 color
+	 * triples, 3 distinct subjects with a color): triples == distinctSubjects
+	 * proves color is functional for Apple (sh:maxCount 1), which is new
+	 * information a downstream SHACL/LinkML generator did not have before
+	 * count_subjects_with_a_type_and_predicate gained its COUNT(DISTINCT
+	 * ?subject) -- void:distinctSubjects was never set on a class-scoped
+	 * property partition at all before that. This holds (and is checked)
+	 * under every backend, unlike the minCount side (see
+	 * distinctSubjectsProvesRequiredProperty below): the class-scoped
+	 * triples/distinctSubjects counts come from this one query regardless of
+	 * --optimize-for, but the class' own void:entities count comes from a
+	 * different, backend-specific query path, and QLever's happens to count
+	 * Apple's entities as 8 instead of 3 for this same fixture -- a
+	 * pre-existing discrepancy unrelated to this change.
+	 */
+	private void assertDistinctSubjectsProvesFunctional(File sdFile) throws IOException {
+		Model model = Rio.parse(sdFile.toURI().toURL().openStream(), RDFFormat.TURTLE);
+		Resource colorPropertyPartitionUnderApple = findApplesColorPropertyPartition(model);
+
+		long triples = asLong(singleObject(model, colorPropertyPartitionUnderApple, VOID.TRIPLES));
+		long distinctSubjects = asLong(singleObject(model, colorPropertyPartitionUnderApple, VOID.DISTINCT_SUBJECTS));
+
+		assertEquals(triples, distinctSubjects, "triples == distinctSubjects should prove color is functional (maxCount 1)");
+	}
+
+	/**
+	 * Same fixture, but only under the plain "sparql" backend, where the
+	 * class' own void:entities count is known to be exact (see the class
+	 * comment above): distinctSubjects == entities proves color is required
+	 * for Apple (sh:minCount 1).
+	 */
+	@Test
+	public void distinctSubjectsProvesRequiredProperty() throws Exception {
+		Generate g = new Generate();
+		File sdFile = new File(tempDir, "void.ttl");
+		g.setGraphNames(new HashSet<>());
+		g.setSdFile(sdFile);
+		g.setIriOfVoidAsString("https://example.org/.well-known/void");
+		g.setRepository(sr);
+		g.setRepositoryLocator("https://example.org/sparql");
+		g.setOptimizeFor(OptimizeFor.SPARQL.name());
+		g.update();
+
+		Model model = Rio.parse(sdFile.toURI().toURL().openStream(), RDFFormat.TURTLE);
+		IRI appleClass = SimpleValueFactory.getInstance()
+				.createIRI("https://example.org/void-generator/test/schema#Apple");
+		Resource appleClassPartition = (Resource) singleSubject(model, VOID.CLASS, appleClass);
+		long appleEntities = asLong(singleObject(model, appleClassPartition, VOID.ENTITIES));
+		long distinctSubjects = asLong(
+				singleObject(model, findApplesColorPropertyPartition(model), VOID.DISTINCT_SUBJECTS));
+
+		assertEquals(3L, appleEntities, "Apple's void:entities");
+		assertEquals(appleEntities, distinctSubjects, "distinctSubjects should prove color is required (minCount 1)");
+	}
+
+	private static Resource findApplesColorPropertyPartition(Model model) {
+		IRI appleClass = SimpleValueFactory.getInstance()
+				.createIRI("https://example.org/void-generator/test/schema#Apple");
+		IRI colorProperty = SimpleValueFactory.getInstance()
+				.createIRI("https://example.org/void-generator/test/schema#color");
+
+		Resource appleClassPartition = (Resource) singleSubject(model, VOID.CLASS, appleClass);
+		Resource colorPropertyPartitionUnderApple = null;
+		for (Value pp : model.filter(appleClassPartition, VOID.PROPERTY_PARTITION, null).objects()) {
+			if (model.contains((Resource) pp, VOID.PROPERTY, colorProperty)) {
+				colorPropertyPartitionUnderApple = (Resource) pp;
+			}
+		}
+		assertNotNull(colorPropertyPartitionUnderApple, "Apple's color property partition not found");
+		return colorPropertyPartitionUnderApple;
+	}
+
+	private static Value singleSubject(Model model, IRI p, Value o) {
+		var it = model.filter(null, p, o).iterator();
+		assertTrue(it.hasNext(), () -> "expected exactly one subject for " + p + ", found none");
+		Value v = it.next().getSubject();
+		assertTrue(!it.hasNext(), () -> "expected exactly one subject for " + p + ", found more than one");
+		return v;
+	}
+
+	private static Value singleObject(Model model, Resource s, IRI p) {
+		var it = model.filter(s, p, null).iterator();
+		assertTrue(it.hasNext(), () -> "expected exactly one " + p + " statement on " + s + ", found none");
+		Value v = it.next().getObject();
+		assertTrue(!it.hasNext(), () -> "expected exactly one " + p + " statement on " + s + ", found more than one");
+		return v;
+	}
+
+	private static long asLong(Value value) {
+		return ((org.eclipse.rdf4j.model.Literal) value).longValue();
 	}
 
 	/**

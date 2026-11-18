@@ -67,8 +67,20 @@ public class FindPredicateLinkSets extends QueryCallable<PredicatePartition, Com
 		counters.findDataTypePartition(cv, predicatePartition, source);
 	}
 
-	private long countTriplesInPredicateClassPartition(final RepositoryConnection connection,
-			PredicatePartition predicatePartition, ClassPartition source) {
+	/**
+	 * Sets both the triple count and the distinct-subject count for
+	 * (source class, predicate) on subpredicatePartition. The latter is what
+	 * lets a downstream shape/schema generator tell a required property from
+	 * an optional one: compared against the source class' void:entities
+	 * count, distinctSubjects == entities proves every instance has a value
+	 * (minCount 1); count == distinctSubjects proves no subject has more
+	 * than one value (maxCount 1). Before this, void-generator only ever
+	 * emitted the plain triple count here, which conflates "500 triples, one
+	 * each on 500 instances" with "500 triples, five each on 100 instances
+	 * and none on the rest" -- both impossible to tell apart downstream.
+	 */
+	private void countTriplesInPredicateClassPartition(final RepositoryConnection connection,
+			PredicatePartition predicatePartition, ClassPartition source, PredicatePartition subpredicatePartition) {
 
 		MapBindingSet bs = new MapBindingSet();
 		bs.setBinding("graph", cv.gd().getGraph());
@@ -78,12 +90,15 @@ public class FindPredicateLinkSets extends QueryCallable<PredicatePartition, Com
 
 		try (TupleQueryResult triples = Helper.runTupleQuery(getQuery(), connection)) {
 			if (triples.hasNext()) {
-				return ((Literal) triples.next().getBinding("count").getValue()).longValue();
+				var bindingSet = triples.next();
+				subpredicatePartition
+						.setTripleCount(((Literal) bindingSet.getBinding("count").getValue()).longValue());
+				subpredicatePartition.setDistinctSubjectCount(
+						((Literal) bindingSet.getBinding("distinctSubjects").getValue()).longValue());
 			}
 		} catch (MalformedQueryException | QueryEvaluationException e) {
 			log.error("query failed", e);
 		}
-		return 0;
 	}
 
 	@Override
@@ -102,10 +117,8 @@ public class FindPredicateLinkSets extends QueryCallable<PredicatePartition, Com
 	protected PredicatePartition run(RepositoryConnection connection) throws Exception {
 
 		var subpredicatePartition = new PredicatePartition(pp.getPredicate());
-		long tripleCount = countTriplesInPredicateClassPartition(connection, pp, source);
-		subpredicatePartition.setTripleCount(tripleCount);
+		countTriplesInPredicateClassPartition(connection, pp, source, subpredicatePartition);
 
-		
 		return subpredicatePartition;
 	}
 
