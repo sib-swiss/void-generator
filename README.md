@@ -12,6 +12,30 @@ mvn package
 
 Or you can use one of the pre build [releases](https://github.com/JervenBolleman/void-generator/releases).
 
+### Integration tests against a real Virtuoso (optional, needs Docker)
+
+`mvn test` only ever runs against an in-memory RDF4J store, even for the
+`--optimize-for virtuoso` code path -- it has its own, separate JDBC/SQL
+counting pipeline that is otherwise never exercised by the test suite. A
+`virtuoso-it` Maven profile runs that pipeline against a real Virtuoso
+started in a Docker container via [Testcontainers](https://testcontainers.com/):
+
+```sh
+mvn verify -Pvirtuoso-it
+```
+
+This needs a reachable Docker daemon; it is never activated by plain
+`mvn test`/`package`/`install`, and the integration test's sources live
+under `src/it/java` (not `src/test/java`) so the profile's dependencies
+never have to be resolved by the default build either.
+
+Use the `verify` lifecycle phase, not a direct `mvn -Pvirtuoso-it
+failsafe:integration-test` goal invocation -- Maven only runs the exact
+goals named on the command line that way, skipping the earlier
+`generate-test-sources`/`test-compile` phases that put the integration
+test's sources on the classpath in the first place, so nothing gets
+compiled or run (silent "no tests to run" success).
+
 ## How to use
 
 1. Always have permission from the endpoint hoster to run this program

@@ -16,6 +16,8 @@
     <rdf4j.version>5.3.0</rdf4j.version>
     <virt.rdf4j.version>1.19</virt.rdf4j.version>
     <virt.jdbc.version>3.123</virt.jdbc.version>
+    <testcontainers.version>1.20.4</testcontainers.version>
+    <maven.failsafe.version>3.0.0</maven.failsafe.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <picocli.version>4.7.6</picocli.version>
   </properties>
@@ -377,6 +379,74 @@
               <keyname>${gpg.keyname}</keyname>
               <passphraseServerId>${gpg.keyname}</passphraseServerId>
             </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <!--
+      Opt-in integration tests against a real backend in a Docker container
+      (Testcontainers), as opposed to the in-memory RDF4J store the default
+      unit tests use. Needs a reachable Docker daemon, so this is never
+      activated by plain mvn test/package/install: only an explicit
+      mvn verify -Pvirtuoso-it resolves these dependencies, compiles, or
+      runs these tests at all. Their sources live under src/it/java, not
+      src/test/java, specifically so the default build's test-compile step
+      never has to see them, and so never needs testcontainers on its
+      classpath, regardless of profile activation. build-helper-maven-plugin
+      below only registers that directory as a test source root inside this
+      profile. Test classes are named *IT.java by Failsafe convention too,
+      which would keep Surefire (plain mvn test) from running them even if
+      they were ever visible to it.
+    -->
+    <profile>
+      <id>virtuoso-it</id>
+      <dependencies>
+        <dependency>
+          <groupId>org.testcontainers</groupId>
+          <artifactId>testcontainers</artifactId>
+          <version>${testcontainers.version}</version>
+          <scope>test</scope>
+        </dependency>
+        <dependency>
+          <groupId>org.testcontainers</groupId>
+          <artifactId>junit-jupiter</artifactId>
+          <version>${testcontainers.version}</version>
+          <scope>test</scope>
+        </dependency>
+      </dependencies>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>build-helper-maven-plugin</artifactId>
+            <version>3.6.0</version>
+            <executions>
+              <execution>
+                <id>add-it-source</id>
+                <phase>generate-test-sources</phase>
+                <goals>
+                  <goal>add-test-source</goal>
+                </goals>
+                <configuration>
+                  <sources>
+                    <source>src/it/java</source>
+                  </sources>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-failsafe-plugin</artifactId>
+            <version>${maven.failsafe.version}</version>
+            <executions>
+              <execution>
+                <goals>
+                  <goal>integration-test</goal>
+                  <goal>verify</goal>
+                </goals>
+              </execution>
+            </executions>
           </plugin>
         </plugins>
       </build>
