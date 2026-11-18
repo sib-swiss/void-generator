@@ -36,6 +36,20 @@ goals named on the command line that way, skipping the earlier
 test's sources on the classpath in the first place, so nothing gets
 compiled or run (silent "no tests to run" success).
 
+### Integration tests against a real QLever (optional, needs Docker)
+
+Same idea, for QLever:
+
+```sh
+mvn verify -Pqlever-it
+```
+
+Like Virtuoso, the server is started directly and the tutorial fixture is
+loaded into it over an RDF4J RepositoryConnection, same as any other
+backend. SPARQL UPDATE (but not SELECT) needs an access token, passed as
+an `access-token` URL query parameter -- set with `-a` at server startup
+and baked into the update endpoint URL used to connect.
+
 ## How to use
 
 1. Always have permission from the endpoint hoster to run this program

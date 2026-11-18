@@ -42,4 +42,9 @@ done
 export DOCKER_HOST="unix://${socket}"
 export TESTCONTAINERS_RYUK_DISABLED=true
 
+# Two separate mvn calls, not `-P virtuoso-it,qlever-it verify` in one: both
+# profiles declare a default-id maven-failsafe-plugin execution with their
+# own <includes>, and activating both at once would merge/override one
+# profile's plugin configuration with the other's rather than running both.
 mvn -Pvirtuoso-it verify
+mvn -Pqlever-it verify
