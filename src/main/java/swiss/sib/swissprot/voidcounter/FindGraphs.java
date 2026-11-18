@@ -35,7 +35,11 @@ public class FindGraphs extends QueryCallable<Set<String>, CommonVariables> {
 
 
 	private static final Set<String> VIRTUOSO_GRAPHS = Set.of("http://www.openlinksw.com/schemas/virtrdf#",
-			"http://www.w3.org/ns/ldp#", "urn:activitystreams-owl:map", "urn:core:services:sparql");
+			"http://www.w3.org/ns/ldp#", "urn:activitystreams-owl:map", "urn:core:services:sparql",
+			// Virtuoso's own RDF 1.2/RDF-star vocabulary graph, not user data --
+			// newer Virtuoso builds expose this, which void-generator's authors
+			// didn't know about yet.
+			"urn:rdf12:vocab");
 
 	private void findGraphs(RepositoryConnection connection, Set<String> res, String query) {
 		setQuery(query);
