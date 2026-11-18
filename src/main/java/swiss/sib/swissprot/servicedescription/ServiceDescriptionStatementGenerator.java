@@ -343,6 +343,7 @@ public class ServiceDescriptionStatementGenerator {
 	}
 
 	private IRI getResourceForSubPartition(IRI namedGraph, IRI clazz, IRI predicate, String voidLocation) {
+		voidLocation = ensureFragmentSeparator(voidLocation);
 		return vf.createIRI(voidLocation,
 				namedGraph.getLocalName() + '!'
 						+ hash(namedGraph, clazz, predicate) + '!' + '-'
@@ -351,6 +352,7 @@ public class ServiceDescriptionStatementGenerator {
 
 	private IRI getResourceForSubPartition(IRI namedGraph, IRI sourceClass, IRI predicate, IRI targetClass,
 			String voidLocation) {
+		voidLocation = ensureFragmentSeparator(voidLocation);
 		return vf.createIRI(voidLocation,
 				namedGraph.getLocalName() + '!'
 						+ hash(namedGraph, sourceClass, predicate, targetClass)
@@ -358,13 +360,24 @@ public class ServiceDescriptionStatementGenerator {
 						+ targetClass.getLocalName());
 	}
 
+	/**
+	 * void:Dataset resource IRIs here are minted as voidLocation + localName,
+	 * with no separator of their own. When voidLocation (typically
+	 * --iri-of-void) does not already end in '#', the two are concatenated
+	 * with nothing between them, producing a syntactically valid but
+	 * malformed-looking IRI (e.g. ".../voidchebi!...!-Class-name" instead of
+	 * ".../void#chebi!...!-Class-name"). getResourceForPartition already
+	 * guards against this; this makes the same guard available to the
+	 * sub-partition resource IRIs.
+	 */
+	private static String ensureFragmentSeparator(String voidLocation) {
+		return voidLocation.endsWith("#") ? voidLocation : voidLocation + "#";
+	}
+
 	protected IRI getResourceForPartition(final IRI namedGraph, final IRI rt, String voidLocation) {
 		String md5 = hash(rt.stringValue());
-		if (voidLocation.endsWith("#")) {
-			return vf.createIRI(voidLocation, namedGraph.getLocalName() + '!' + md5 + '!' + rt.getLocalName());
-		} else {
-			return vf.createIRI(voidLocation + "#", namedGraph.getLocalName() + '!' + md5 + '!' + rt.getLocalName());
-		}
+		voidLocation = ensureFragmentSeparator(voidLocation);
+		return vf.createIRI(voidLocation, namedGraph.getLocalName() + '!' + md5 + '!' + rt.getLocalName());
 	}
 
 	protected IRI getIRI(final String rawGraphName) {

@@ -54,7 +54,12 @@ public class GraphDescription
 
 	private IRI valueOf(String s)
 	{
-		int position = s.lastIndexOf('/');
+		// Splitting on '/' alone leaves a stray '#' inside the "local name" for any
+		// graph IRI with a fragment (e.g. ".../test/trees#trees"), which is invisible
+		// until that local name is itself embedded into another IRI's local name
+		// (e.g. a cross-graph linkset's objectsTarget) -- that produces a URI with
+		// two '#' characters, invalid per RFC 3986 and rejected by a strict parser.
+		int position = Math.max(s.lastIndexOf('/'), s.lastIndexOf('#'));
 		if (position == -1)
 			throw new IllegalArgumentException("Invalid PURL: " + s);
 		return SimpleValueFactory.getInstance().createIRI(s.substring(0, position + 1), s.substring(position + 1));
