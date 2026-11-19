@@ -106,37 +106,42 @@ jobs:
         if: ${{ inputs.dryRun }}
         run: mvn -B release:prepare -DdryRun=true
 
-      - name: release:prepare and release:perform
+      - name: release:prepare
+        if: ${{ !inputs.dryRun }}
+        run: mvn -B release:prepare
+
+      - name: Capture the prepared release tag and version
+        if: ${{ !inputs.dryRun }}
+        id: prepared
+        run: |
+          # Read this right after release:prepare, not after release:perform:
+          # on success, release:perform cleans up release.properties (and,
+          # unless told not to below, target/checkout) automatically, since
+          # they're meant to be transient prepare/perform working files --
+          # by the time a later step looked for it, it was already gone.
+          tag=$(grep '^scm.tag=' release.properties | cut -d= -f2)
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      - name: release:perform
         if: ${{ !inputs.dryRun }}
         env:
           GPG_KEYNAME: ${{ secrets.GPG_KEYNAME }}
         run: |
-          mvn -B release:prepare
-          mvn -B release:perform -Darguments="-Dgpg.keyname=${GPG_KEYNAME}"
-
-      - name: Locate the released tag and uber jar
-        if: ${{ !inputs.dryRun }}
-        id: released
-        run: |
-          # release:prepare writes release.properties with the exact tag used
-          # (e.g. scm.tag=v0.20); release:perform doesn't delete it (that's a
-          # separate release:clean goal, not run here), so it's still here.
-          # release:perform builds the tagged checkout under target/checkout,
-          # so that -- not this project's own target/, which is back on the
-          # next -SNAPSHOT by now -- is where the matching uber jar landed.
-          tag=$(grep '^scm.tag=' release.properties | cut -d= -f2)
-          version=${tag#v}
-          jar="target/checkout/target/void-generator-${version}-uber.jar"
-          test -f "$jar"
-          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-          echo "jar=${jar}" >> "$GITHUB_OUTPUT"
+          # -DcleanCheckout=false: keep target/checkout (and the uber jar
+          # built inside it) around afterward instead of deleting it on
+          # success, the same reason release.properties is read above and
+          # not here.
+          mvn -B release:perform -DcleanCheckout=false -Darguments="-Dgpg.keyname=${GPG_KEYNAME}"
 
       - name: Create GitHub release with the uber jar attached
         if: ${{ !inputs.dryRun }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${{ steps.released.outputs.tag }}" \
-            "${{ steps.released.outputs.jar }}" \
-            --title "${{ steps.released.outputs.tag }}" \
+          jar="target/checkout/target/void-generator-${{ steps.prepared.outputs.version }}-uber.jar"
+          test -f "$jar"
+          gh release create "${{ steps.prepared.outputs.tag }}" \
+            "$jar" \
+            --title "${{ steps.prepared.outputs.tag }}" \
             --generate-notes
