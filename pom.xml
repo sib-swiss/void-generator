@@ -4,13 +4,14 @@
   <groupId>io.github.sib-swiss</groupId>
   <artifactId>void-generator</artifactId>
   <packaging>jar</packaging>
-  <version>0.20-SNAPSHOT</version>
+  <version>0.20</version>
   <name>void-generator</name>
   <description>Generate void descriptions for SPARQL endpoints.</description>
   <url>https://github.com/sib-swiss/void-generator</url>
   <scm>
     <url>https://github.com/sib-swiss/void-generator</url>
     <developerConnection>scm:git:https://github.com/sib-swiss/void-generator</developerConnection>
+    <tag>v0.20</tag>
   </scm>
   <properties>
     <rdf4j.version>5.3.0</rdf4j.version>
