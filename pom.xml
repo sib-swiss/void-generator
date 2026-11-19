@@ -4,14 +4,14 @@
   <groupId>io.github.sib-swiss</groupId>
   <artifactId>void-generator</artifactId>
   <packaging>jar</packaging>
-  <version>0.21</version>
+  <version>0.22-SNAPSHOT</version>
   <name>void-generator</name>
   <description>Generate void descriptions for SPARQL endpoints.</description>
   <url>https://github.com/sib-swiss/void-generator</url>
   <scm>
     <url>https://github.com/sib-swiss/void-generator</url>
     <developerConnection>scm:git:https://github.com/sib-swiss/void-generator</developerConnection>
-    <tag>v0.21</tag>
+    <tag>HEAD</tag>
   </scm>
   <properties>
     <rdf4j.version>5.3.0</rdf4j.version>
@@ -163,14 +163,14 @@
                 </filter>
               </filters>
               <transformers>
-                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer" />
                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                   <manifestEntries>
                     <Main-Class>swiss.sib.swissprot.servicedescription.Generate</Main-Class>
                   </manifestEntries>
                 </transformer>
               </transformers>
-              <artifactSet/>
+              <artifactSet />
               <outputFile>${project.build.directory}/${project.artifactId}-${project.version}-uber.jar</outputFile>
             </configuration>
           </execution>
