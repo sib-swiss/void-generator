@@ -3,13 +3,17 @@
 # Central, then bumps the pom to the next -SNAPSHOT and pushes both commits
 # and the tag back to the repository. This is what `mvn release:prepare
 # release:perform` already does locally -- this workflow just runs that
-# same, already-established process in CI instead.
+# same, already-established process in CI instead. It also creates a
+# GitHub release for the new tag with the runnable uber jar attached
+# (central-publishing-maven-plugin only ever handles the Central side --
+# the plain/sources/javadoc jars, not the shaded one -- so this is the
+# only place the uber jar actually gets published anywhere).
 #
 # Manually triggered only (workflow_dispatch): a release is a one-way,
 # externally-visible action (a Maven Central publish can't be unpublished),
 # so this is deliberately never run on a push/PR trigger. Use the dry-run
 # input to rehearse the prepare step (version bumps, tag name) without
-# committing, tagging, pushing, or deploying anything.
+# committing, tagging, pushing, deploying, or creating a release.
 #
 # Needs these repository secrets to actually do anything:
 #   GPG_PRIVATE_KEY   - ASCII-armored private key (`gpg --export-secret-keys --armor <keyname>`)
@@ -19,7 +23,9 @@
 #   CENTRAL_PASSWORD   - Maven Central Portal user token password
 # Without them configured, this workflow exists but cannot succeed past the
 # point a credential is actually needed -- it is safe to merge in before
-# those secrets are added to the repository.
+# those secrets are added to the repository. The GitHub release step only
+# needs the automatic GITHUB_TOKEN (nothing to configure for that one), via
+# the contents: write permission already granted below.
 
 name: Release
 
@@ -107,3 +113,30 @@ jobs:
         run: |
           mvn -B release:prepare
           mvn -B release:perform -Darguments="-Dgpg.keyname=${GPG_KEYNAME}"
+
+      - name: Locate the released tag and uber jar
+        if: ${{ !inputs.dryRun }}
+        id: released
+        run: |
+          # release:prepare writes release.properties with the exact tag used
+          # (e.g. scm.tag=v0.20); release:perform doesn't delete it (that's a
+          # separate release:clean goal, not run here), so it's still here.
+          # release:perform builds the tagged checkout under target/checkout,
+          # so that -- not this project's own target/, which is back on the
+          # next -SNAPSHOT by now -- is where the matching uber jar landed.
+          tag=$(grep '^scm.tag=' release.properties | cut -d= -f2)
+          version=${tag#v}
+          jar="target/checkout/target/void-generator-${version}-uber.jar"
+          test -f "$jar"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "jar=${jar}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release with the uber jar attached
+        if: ${{ !inputs.dryRun }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.released.outputs.tag }}" \
+            "${{ steps.released.outputs.jar }}" \
+            --title "${{ steps.released.outputs.tag }}" \
+            --generate-notes
